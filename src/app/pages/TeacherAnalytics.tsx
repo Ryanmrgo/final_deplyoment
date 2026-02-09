@@ -9,10 +9,37 @@ import { useAuth } from '@/app/components/AuthContext';
 import { useCourses } from '@/app/components/CoursesContext';
 import { teacherCourses } from '@/app/data/mockData';
 
+type AnalyticsCourse = {
+  id: string;
+  title: string;
+  category: string;
+  students: number;
+  rating: number;
+  reviewCount: number;
+};
+
 export function TeacherAnalytics() {
   const { userRole } = useAuth();
   const { createdCourses } = useCourses();
-  const analyticsCourses = [...teacherCourses, ...createdCourses];
+
+  const analyticsCourses: AnalyticsCourse[] = [
+    ...teacherCourses.map((course) => ({
+      id: course.id,
+      title: course.title,
+      category: course.category,
+      students: 'students' in course ? course.students : course.enrolledStudents ?? 0,
+      rating: 'rating' in course ? course.rating : course.averageRating ?? 0,
+      reviewCount: 'reviewCount' in course ? course.reviewCount : 0,
+    })),
+    ...createdCourses.map((course) => ({
+      id: course.id,
+      title: course.title,
+      category: course.category,
+      students: course.students ?? 0,
+      rating: course.rating ?? 0,
+      reviewCount: course.reviewCount ?? 0,
+    })),
+  ];
 
   if (userRole !== 'teacher') {
     return (
@@ -30,10 +57,7 @@ export function TeacherAnalytics() {
 
   const totalStudents = analyticsCourses.reduce((sum, course) => sum + course.students, 0);
   const averageRating = analyticsCourses.length
-    ? (
-        analyticsCourses.reduce((sum, course) => sum + (course.rating ?? 0), 0) /
-        analyticsCourses.length
-      ).toFixed(2)
+    ? (analyticsCourses.reduce((sum, course) => sum + course.rating, 0) / analyticsCourses.length).toFixed(2)
     : '0.00';
 
   return (
@@ -108,7 +132,7 @@ export function TeacherAnalytics() {
                   </div>
                   <div className="flex flex-wrap gap-4 text-sm text-gray-600">
                     <span><strong className="text-gray-900">{course.students}</strong> students</span>
-                    <span><strong className="text-gray-900">{(course.rating ?? 0).toFixed(1)}</strong> rating</span>
+                    <span><strong className="text-gray-900">{course.rating.toFixed(1)}</strong> rating</span>
                     <span><strong className="text-gray-900">{course.reviewCount}</strong> reviews</span>
                   </div>
                 </div>

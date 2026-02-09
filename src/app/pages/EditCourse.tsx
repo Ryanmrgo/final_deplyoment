@@ -10,11 +10,14 @@ import { Label } from '@/app/components/ui/label';
 import { Textarea } from '@/app/components/ui/textarea';
 import { categories } from '@/app/data/mockData';
 import { useAuth } from '@/app/components/AuthContext';
-import { useCourses } from '@/app/components/CoursesContext';
+import { useCourses, type LessonAttachment, type SyllabusSection } from '@/app/components/CoursesContext';
 
 interface EditCourseProps {
   id: string;
 }
+
+type LessonEntry = { title: string; files: LessonAttachment[] };
+type SyllabusSectionLocal = Omit<SyllabusSection, 'lessons'> & { lessons: LessonEntry[] };
 
 export function EditCourse({ id }: EditCourseProps) {
   const router = useRouter();
@@ -32,11 +35,13 @@ export function EditCourse({ id }: EditCourseProps) {
   const [image, setImage] = useState(course?.image ?? '');
   const [imageName, setImageName] = useState('');
   const [isPublished, setIsPublished] = useState(course?.isPublished ?? false);
-  const [syllabus, setSyllabus] = useState(
+  const [syllabus, setSyllabus] = useState<SyllabusSectionLocal[]>(
     course?.syllabus.map((section) => ({
       ...section,
       lessons: section.lessons.map((lesson) =>
-        typeof lesson === 'string' ? { title: lesson, files: [] } : { ...lesson, files: lesson.files ?? [] }
+        typeof lesson === 'string'
+          ? { title: lesson, files: [] }
+          : { title: lesson.title, files: lesson.files ?? [] }
       ),
     })) ?? [
       {
@@ -74,7 +79,7 @@ export function EditCourse({ id }: EditCourseProps) {
         if (typeof reader.result !== 'string') {
           return;
         }
-        const attachment = {
+        const attachment: LessonAttachment = {
           name: file.name,
           type: file.type || 'application/octet-stream',
           dataUrl: reader.result,
@@ -88,7 +93,7 @@ export function EditCourse({ id }: EditCourseProps) {
               if (lIndex !== lessonIndex) {
                 return lesson;
               }
-              const current = typeof lesson === 'string' ? { title: lesson, files: [] } : lesson;
+              const current = lesson;
               return {
                 ...current,
                 files: [...(current.files ?? []), attachment],
@@ -140,9 +145,8 @@ export function EditCourse({ id }: EditCourseProps) {
       const title = section.title.trim() || `Section ${index + 1}`;
       const lessons = section.lessons
         .map((lesson, lessonIndex) => {
-          const current = typeof lesson === 'string' ? { title: lesson, files: [] } : lesson;
-          const lessonTitle = current.title.trim() || `Lesson ${lessonIndex + 1}`;
-          return { ...current, title: lessonTitle };
+          const lessonTitle = lesson.title.trim() || `Lesson ${lessonIndex + 1}`;
+          return { ...lesson, title: lessonTitle };
         })
         .filter((lesson) => lesson.title.trim().length > 0);
       return {
@@ -341,9 +345,9 @@ export function EditCourse({ id }: EditCourseProps) {
                     <div className="space-y-2">
                       {section.lessons.map((lesson, lessonIndex) => (
                         <div key={`${section.id}-lesson-${lessonIndex}`} className="space-y-2">
-                        <div key={`${section.id}-lesson-${lessonIndex}`} className="flex items-center gap-3">
+                        <div className="flex items-center gap-3">
                           <Input
-                            value={typeof lesson === 'string' ? lesson : lesson.title}
+                            value={lesson.title}
                             onChange={(e) =>
                               setSyllabus((prev) =>
                                 prev.map((item, index) =>
@@ -352,9 +356,7 @@ export function EditCourse({ id }: EditCourseProps) {
                                         ...item,
                                         lessons: item.lessons.map((value, innerIndex) =>
                                           innerIndex === lessonIndex
-                                            ? typeof value === 'string'
-                                              ? e.target.value
-                                              : { ...value, title: e.target.value }
+                                            ? { ...value, title: e.target.value }
                                             : value
                                         ),
                                       }
@@ -397,14 +399,12 @@ export function EditCourse({ id }: EditCourseProps) {
                             Upload Lesson Files
                           </label>
                           <span className="text-xs text-gray-600">
-                            {typeof lesson === 'string' || !lesson.files?.length
-                              ? 'No files'
-                              : `${lesson.files.length} file(s) attached`}
+                            {lesson.files.length ? `${lesson.files.length} file(s) attached` : 'No files'}
                           </span>
                         </div>
-                        {typeof lesson !== 'string' && lesson.files?.length ? (
+                        {lesson.files.length ? (
                           <div className="space-y-1 text-xs text-gray-600">
-                            {lesson.files.map((file, fileIndex) => (
+                            {lesson.files.map((file: LessonAttachment, fileIndex: number) => (
                               <div key={`${file.name}-${fileIndex}`} className="flex items-center justify-between gap-2">
                                 <span className="truncate">{file.name}</span>
                                 <Button
@@ -420,12 +420,12 @@ export function EditCourse({ id }: EditCourseProps) {
                                         return {
                                           ...item,
                                           lessons: item.lessons.map((value, innerIndex) => {
-                                            if (innerIndex !== lessonIndex || typeof value === 'string') {
+                                            if (innerIndex !== lessonIndex) {
                                               return value;
                                             }
                                             return {
                                               ...value,
-                                              files: value.files?.filter((_, attachmentIndex) => attachmentIndex !== fileIndex),
+                                              files: value.files.filter((_: LessonAttachment, attachmentIndex: number) => attachmentIndex !== fileIndex),
                                             };
                                           }),
                                         };
