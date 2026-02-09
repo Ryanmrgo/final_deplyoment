@@ -7,10 +7,20 @@ export type LessonAttachment = { name: string; type: string; dataUrl: string };
 export type LessonItem = string | { title: string; files?: LessonAttachment[] };
 export type SyllabusSection = { id: string; title: string; lessons: LessonItem[] };
 
+export type Assignment = {
+  id: string;
+  title: string;
+  description: string;
+  dueDate: string;
+  totalPoints: number;
+  files?: LessonAttachment[];
+};
+
 export type Course = Omit<(typeof baseCourses)[number], 'syllabus'> & {
   syllabus: SyllabusSection[];
   isPublished?: boolean;
   learningOutcomes?: string[];
+  assignments?: Assignment[];
 };
 
 interface CoursesContextValue {

@@ -20,9 +20,12 @@ interface UserProfile {
 interface AuthContextValue {
   userRole: UserRole;
   profile: UserProfile | null;
+  isLoaded: boolean;
+  isSignedIn: boolean;
   login: (role: Exclude<UserRole, null>, profile?: Partial<UserProfile>) => void;
   logout: () => void;
-  updateProfile: (updates: Partial<UserProfile>) => void;
+  updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
+  setRole: (role: Exclude<UserRole, null>) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -124,6 +127,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         email: fallbackEmail,
         role,
         avatar: nextProfile?.avatar ?? prev?.avatar,
+        bio: nextProfile?.bio ?? prev?.bio,
+        professionalism: nextProfile?.professionalism ?? prev?.professionalism,
+        rating: nextProfile?.rating ?? prev?.rating,
+        graduationYear: nextProfile?.graduationYear ?? prev?.graduationYear,
+        expertise: nextProfile?.expertise ?? prev?.expertise,
+        experienceYears: nextProfile?.experienceYears ?? prev?.experienceYears,
       };
     });
   }, []);
@@ -133,7 +142,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setProfile(null);
   }, []);
 
-  const updateProfile = useCallback((updates: Partial<UserProfile>) => {
+  const updateProfile = useCallback(async (updates: Partial<UserProfile>) => {
     setProfile((prev) => {
       if (!prev) {
         return null;
@@ -142,9 +151,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const setRole = useCallback(async (role: Exclude<UserRole, null>) => {
+    setUserRole(role);
+    setProfile((prev) => (prev ? { ...prev, role } : null));
+  }, []);
+
   const value = useMemo<AuthContextValue>(
-    () => ({ userRole, profile, login, logout, updateProfile }),
-    [userRole, profile, login, logout, updateProfile]
+    () => ({
+      userRole,
+      profile,
+      isLoaded: true,
+      isSignedIn: !!userRole,
+      login,
+      logout,
+      updateProfile,
+      setRole,
+    }),
+    [userRole, profile, login, logout, updateProfile, setRole]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

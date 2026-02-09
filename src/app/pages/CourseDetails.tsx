@@ -148,6 +148,50 @@ export function CourseDetails({ id }: CourseDetailsProps) {
               </CardContent>
             </Card>
 
+            {/* Course Assignments */}
+            {course.assignments && course.assignments.length > 0 ? (
+              <Card className="bg-white">
+                <CardContent className="p-6">
+                  <h2 className="text-2xl font-bold mb-4 text-gray-900">Assignments</h2>
+                  <div className="space-y-4">
+                    {course.assignments.map((assignment) => (
+                      <div key={assignment.id} className="border rounded-lg p-4 bg-gray-50">
+                        <div className="flex items-start justify-between mb-2">
+                          <div className="flex-1">
+                            <h3 className="font-semibold text-gray-900">{assignment.title}</h3>
+                            {assignment.dueDate && (
+                              <p className="text-sm text-gray-600">
+                                Due: {new Date(assignment.dueDate).toLocaleDateString()}
+                              </p>
+                            )}
+                          </div>
+                          <Badge className="bg-[#1E3A8A] text-white">{assignment.totalPoints} pts</Badge>
+                        </div>
+                        {assignment.description && (
+                          <p className="text-gray-700 text-sm mt-2 mb-3">{assignment.description}</p>
+                        )}
+                        {assignment.files && assignment.files.length > 0 ? (
+                          <div className="mt-3 pt-3 border-t space-y-1 text-sm">
+                            <p className="text-gray-700 font-medium mb-2">📎 Files:</p>
+                            {assignment.files.map((file, fileIndex) => (
+                              <a
+                                key={`${file.name}-${fileIndex}`}
+                                href={file.dataUrl}
+                                download={file.name}
+                                className="block text-[#1E3A8A] hover:underline"
+                              >
+                                ↓ {file.name}
+                              </a>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            ) : null}
+
             {/* Instructor */}
             <Card className="bg-white">
               <CardContent className="p-6">
