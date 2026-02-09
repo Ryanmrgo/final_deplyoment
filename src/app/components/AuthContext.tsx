@@ -100,18 +100,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const hasLoaded = useRef(false);
 
+  // COMMENTED OUT: Remove auto-login on mount
+  // useEffect(() => {
+  //   const storedProfile = readStoredProfile();
+  //   const storedRole = readStoredRole();
+  //   if (storedProfile) {
+  //     setProfile(storedProfile);
+  //     setUserRole(storedProfile.role);
+  //   } else if (storedRole) {
+  //     setUserRole(storedRole);
+  //   }
+  //   hasLoaded.current = true;
+  // }, []);
+
+  // Set hasLoaded to true on mount without auto-login
   useEffect(() => {
-    const storedProfile = readStoredProfile();
-    const storedRole = readStoredRole();
-    if (storedProfile) {
-      setProfile(storedProfile);
-      setUserRole(storedProfile.role);
-    } else if (storedRole) {
-      setUserRole(storedRole);
-    }
     hasLoaded.current = true;
   }, []);
 
+  // Save data to localStorage when it changes
   useEffect(() => {
     if (!hasLoaded.current) {
       return;
