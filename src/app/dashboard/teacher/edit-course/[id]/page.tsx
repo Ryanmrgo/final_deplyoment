@@ -1,6 +1,6 @@
-import { CourseDetails } from '@/app/pages/CourseDetails';
+import { EditCourse } from '@/app/pages/EditCourse';
 
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  return <CourseDetails id={id} />;
+  return <EditCourse id={id} />;
 }

@@ -27,7 +27,7 @@ export function Register() {
       return;
     }
     // Mock registration logic
-    login(role);
+    login(role, { name, email });
     router.push(role === 'student' ? '/dashboard/student' : '/dashboard/teacher');
   };
 

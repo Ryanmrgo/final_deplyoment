@@ -103,7 +103,7 @@ export function Navbar({ userRole, onLogout }: NavbarProps) {
               </div>
             ) : (
               <div className="flex items-center gap-3 ml-4">
-                <Link href={`/dashboard/${resolvedRole}`}>
+                <Link href="/profile">
                   <Button variant="ghost" className="text-white hover:text-[#F59E0B] hover:bg-white/10">
                     <User className="w-4 h-4 mr-2" />
                     Profile

@@ -7,21 +7,23 @@ import { Input } from '@/app/components/ui/input';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
 import { Search, Filter } from 'lucide-react';
-import { courses, categories } from '@/app/data/mockData';
+import { categories } from '@/app/data/mockData';
+import { useCourses } from '@/app/components/CoursesContext';
 
 export function Courses() {
+  const { publicCourses } = useCourses();
   const searchParams = useSearchParams();
   const categoryFromUrl = searchParams.get('category');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(categoryFromUrl);
-  const [filteredCourses, setFilteredCourses] = useState(courses);
+  const [filteredCourses, setFilteredCourses] = useState(publicCourses);
 
   useEffect(() => {
     setSelectedCategory(categoryFromUrl);
   }, [categoryFromUrl]);
 
   useEffect(() => {
-    let result = courses;
+    let result = publicCourses;
 
     // Filter by category
     if (selectedCategory) {
@@ -39,7 +41,7 @@ export function Courses() {
     }
 
     setFilteredCourses(result);
-  }, [searchQuery, selectedCategory]);
+  }, [searchQuery, selectedCategory, publicCourses]);
 
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
@@ -48,7 +50,7 @@ export function Courses() {
         <div className="container mx-auto px-4">
           <h1 className="text-4xl font-bold mb-4">Explore Our Free Courses</h1>
           <p className="text-xl text-gray-200">
-            Discover {courses.length}+ courses across multiple categories. All completely free!
+            Discover {publicCourses.length}+ courses across multiple categories. All completely free!
           </p>
         </div>
       </section>
