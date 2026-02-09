@@ -7,9 +7,28 @@ import { Plus, Users, BookOpen, Star, TrendingUp, Edit, Eye } from 'lucide-react
 import { teacherCourses, stats } from '@/app/data/mockData';
 import Link from 'next/link';
 import { useAuth } from '@/app/components/AuthContext';
+import { useCourses } from '@/app/components/CoursesContext';
 
 export function TeacherDashboard() {
   const { userRole } = useAuth();
+  const { createdCourses, updateCourse } = useCourses();
+  const createdTeacherCourses = createdCourses.map((course) => ({
+    id: course.id,
+    title: course.title,
+    category: course.category,
+    enrolledStudents: course.students,
+    completionRate: 0,
+    averageRating: course.rating,
+    isPublished: course.isPublished !== false,
+    source: 'created' as const,
+  }));
+  const activeCoursesCount =
+    teacherCourses.length + createdTeacherCourses.filter((course) => course.isPublished).length;
+  const mockTeacherCourses = teacherCourses.map((course) => ({
+    ...course,
+    source: 'mock' as const,
+  }));
+  const allTeacherCourses = [...createdTeacherCourses, ...mockTeacherCourses];
   if (userRole !== 'teacher') {
     return (
       <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center">
@@ -33,10 +52,12 @@ export function TeacherDashboard() {
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Teacher Dashboard</h1>
             <p className="text-gray-600">Manage your courses and monitor student progress</p>
           </div>
-          <Button className="bg-[#F59E0B] hover:bg-[#F59E0B]/90 text-white">
-            <Plus className="w-5 h-5 mr-2" />
-            Create New Course
-          </Button>
+          <Link href="/dashboard/teacher/create-course">
+            <Button className="bg-[#F59E0B] hover:bg-[#F59E0B]/90 text-white">
+              <Plus className="w-5 h-5 mr-2" />
+              Create New Course
+            </Button>
+          </Link>
         </div>
 
         {/* Stats Cards */}
@@ -59,7 +80,7 @@ export function TeacherDashboard() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-600 mb-1">Active Courses</p>
-                  <p className="text-3xl font-bold text-[#1E3A8A]">{stats.teacher.activeCourses}</p>
+                  <p className="text-3xl font-bold text-[#1E3A8A]">{activeCoursesCount}</p>
                 </div>
                 <BookOpen className="w-12 h-12 text-blue-500" />
               </div>
@@ -108,14 +129,18 @@ export function TeacherDashboard() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {teacherCourses.map((course) => (
+                  {allTeacherCourses.map((course) => (
                     <div key={course.id} className="border rounded-lg p-5 hover:shadow-md transition">
                       <div className="flex items-start justify-between mb-3">
                         <div>
                           <h3 className="font-semibold text-lg text-gray-900 mb-1">{course.title}</h3>
                           <p className="text-sm text-gray-600">{course.category}</p>
                         </div>
-                        <Badge className="bg-green-100 text-green-700">Published</Badge>
+                        {course.source === 'created' && !course.isPublished ? (
+                          <Badge className="bg-yellow-100 text-yellow-700">Draft</Badge>
+                        ) : (
+                          <Badge className="bg-green-100 text-green-700">Published</Badge>
+                        )}
                       </div>
 
                       <div className="grid grid-cols-3 gap-4 mb-4">
@@ -136,15 +161,27 @@ export function TeacherDashboard() {
                         </div>
                       </div>
 
-                      <div className="flex gap-2">
-                        <Button variant="outline" size="sm" className="flex-1 border-[#1E3A8A] text-[#1E3A8A] hover:bg-[#1E3A8A] hover:text-white">
-                          <Edit className="w-4 h-4 mr-2" />
-                          Edit Course
-                        </Button>
-                        <Button variant="outline" size="sm" className="flex-1 border-[#1E3A8A] text-[#1E3A8A] hover:bg-[#1E3A8A] hover:text-white">
-                          <Eye className="w-4 h-4 mr-2" />
-                          View Analytics
-                        </Button>
+                      <div className="flex flex-wrap gap-2">
+                        <Link href={`/dashboard/teacher/edit-course/${course.id}`} className="flex-1 min-w-[160px]">
+                          <Button variant="outline" size="sm" className="w-full border-[#1E3A8A] text-[#1E3A8A] hover:bg-[#1E3A8A] hover:text-white">
+                            <Edit className="w-4 h-4 mr-2" />
+                            Edit Course
+                          </Button>
+                        </Link>
+                        {course.source === 'created' && !course.isPublished ? (
+                          <Button
+                            size="sm"
+                            className="flex-1 min-w-[160px] bg-[#F59E0B] hover:bg-[#F59E0B]/90 text-white"
+                            onClick={() => updateCourse(course.id, { isPublished: true })}
+                          >
+                            Publish
+                          </Button>
+                        ) : (
+                          <Button variant="outline" size="sm" className="flex-1 min-w-[160px] border-[#1E3A8A] text-[#1E3A8A] hover:bg-[#1E3A8A] hover:text-white">
+                            <Eye className="w-4 h-4 mr-2" />
+                            View Analytics
+                          </Button>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -199,10 +236,12 @@ export function TeacherDashboard() {
                 <CardTitle className="text-xl text-gray-900">Quick Actions</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <Button className="w-full bg-[#F59E0B] hover:bg-[#F59E0B]/90 text-white">
-                  <Plus className="w-4 h-4 mr-2" />
-                  Create New Course
-                </Button>
+                <Link href="/dashboard/teacher/create-course" className="block">
+                  <Button className="w-full bg-[#F59E0B] hover:bg-[#F59E0B]/90 text-white">
+                    <Plus className="w-4 h-4 mr-2" />
+                    Create New Course
+                  </Button>
+                </Link>
                 <Button variant="outline" className="w-full border-[#1E3A8A] text-[#1E3A8A] hover:bg-[#1E3A8A] hover:text-white">
                   Manage Students
                 </Button>

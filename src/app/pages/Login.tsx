@@ -20,13 +20,13 @@ export function Login() {
     e.preventDefault();
     // Mock login logic - in real app, this would call an API
     if (email.includes('teacher')) {
-      login('teacher');
+      login('teacher', { email });
       router.push('/dashboard/teacher');
     } else if (email.includes('admin')) {
-      login('admin');
+      login('admin', { email });
       router.push('/dashboard/admin');
     } else {
-      login('student');
+      login('student', { email });
       router.push('/dashboard/student');
     }
   };

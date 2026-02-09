@@ -34,10 +34,18 @@ export function CourseCard({
   duration,
   image,
 }: CourseCardProps) {
+  const hasImage = Boolean(image && image.trim());
+
   return (
     <Card className="overflow-hidden hover:shadow-xl transition-shadow duration-300 bg-white">
       <div className="relative h-48 overflow-hidden">
-        <img src={image} alt={title} className="w-full h-full object-cover hover:scale-105 transition-transform duration-300" />
+        {hasImage ? (
+          <img src={image} alt={title} className="w-full h-full object-cover hover:scale-105 transition-transform duration-300" />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center bg-gray-100 text-sm text-gray-500">
+            No image
+          </div>
+        )}
         <Badge className="absolute top-3 right-3 bg-[#1E3A8A] text-white">{category}</Badge>
       </div>
 

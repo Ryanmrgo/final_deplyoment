@@ -1,18 +1,26 @@
+"use client";
+
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Card, CardContent } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/app/components/ui/accordion';
 import { Avatar, AvatarFallback } from '@/app/components/ui/avatar';
 import { Star, Users, Clock, Award, BookOpen, ChevronRight } from 'lucide-react';
-import { courses } from '@/app/data/mockData';
+import { useAuth } from '@/app/components/AuthContext';
+import { useCourses } from '@/app/components/CoursesContext';
 
 interface CourseDetailsProps {
   id: string;
 }
 
 export function CourseDetails({ id }: CourseDetailsProps) {
-  const course = courses.find((c) => c.id === id);
+  const router = useRouter();
+  const { userRole } = useAuth();
+  const { allCourses, publicCourses } = useCourses();
+  const courseSource = userRole === 'teacher' ? allCourses : publicCourses;
+  const course = courseSource.find((c) => c.id === id);
 
   if (!course) {
     return (
@@ -74,38 +82,24 @@ export function CourseDetails({ id }: CourseDetailsProps) {
           {/* Left Column - Course Content */}
           <div className="lg:col-span-2 space-y-8">
             {/* Course Overview */}
-            <Card className="bg-white">
-              <CardContent className="p-6">
-                <h2 className="text-2xl font-bold mb-4 text-gray-900">What You'll Learn</h2>
-                <p className="text-gray-700 leading-relaxed mb-6">{course.description}</p>
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div className="flex items-start gap-3">
-                    <div className="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center mt-1 flex-shrink-0">
-                      <span className="text-green-600 text-sm">✓</span>
-                    </div>
-                    <span className="text-gray-700">Master the fundamentals and core concepts</span>
+            {course.learningOutcomes && course.learningOutcomes.length > 0 ? (
+              <Card className="bg-white">
+                <CardContent className="p-6">
+                  <h2 className="text-2xl font-bold mb-4 text-gray-900">What You'll Learn</h2>
+                  <p className="text-gray-700 leading-relaxed mb-6">{course.description}</p>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    {course.learningOutcomes.map((outcome, index) => (
+                      <div key={`${outcome}-${index}`} className="flex items-start gap-3">
+                        <div className="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center mt-1 flex-shrink-0">
+                          <span className="text-green-600 text-sm">✓</span>
+                        </div>
+                        <span className="text-gray-700">{outcome}</span>
+                      </div>
+                    ))}
                   </div>
-                  <div className="flex items-start gap-3">
-                    <div className="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center mt-1 flex-shrink-0">
-                      <span className="text-green-600 text-sm">✓</span>
-                    </div>
-                    <span className="text-gray-700">Build real-world projects from scratch</span>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <div className="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center mt-1 flex-shrink-0">
-                      <span className="text-green-600 text-sm">✓</span>
-                    </div>
-                    <span className="text-gray-700">Get hands-on practice and exercises</span>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <div className="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center mt-1 flex-shrink-0">
-                      <span className="text-green-600 text-sm">✓</span>
-                    </div>
-                    <span className="text-gray-700">Earn a certificate upon completion</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            ) : null}
 
             {/* Course Syllabus */}
             <Card className="bg-white">
@@ -125,9 +119,25 @@ export function CourseDetails({ id }: CourseDetailsProps) {
                       <AccordionContent>
                         <ul className="ml-11 mt-2 space-y-2">
                           {section.lessons.map((lesson, lessonIndex) => (
-                            <li key={lessonIndex} className="flex items-center gap-2 text-gray-700">
-                              <BookOpen className="w-4 h-4 text-[#F59E0B]" />
-                              <span>{lesson}</span>
+                            <li key={lessonIndex} className="text-gray-700">
+                              <div className="flex items-center gap-2">
+                                <BookOpen className="w-4 h-4 text-[#F59E0B]" />
+                                <span>{typeof lesson === 'string' ? lesson : lesson.title}</span>
+                              </div>
+                              {typeof lesson !== 'string' && lesson.files?.length ? (
+                                <div className="mt-2 space-y-1 pl-6 text-sm">
+                                  {lesson.files.map((file, fileIndex) => (
+                                    <a
+                                      key={`${file.name}-${fileIndex}`}
+                                      href={file.dataUrl}
+                                      download={file.name}
+                                      className="block text-[#1E3A8A] hover:underline"
+                                    >
+                                      {file.name}
+                                    </a>
+                                  ))}
+                                </div>
+                              ) : null}
                             </li>
                           ))}
                         </ul>
@@ -197,7 +207,13 @@ export function CourseDetails({ id }: CourseDetailsProps) {
           <div className="lg:col-span-1">
             <Card className="sticky top-20 bg-white shadow-xl">
               <div className="relative h-48 overflow-hidden rounded-t-lg">
-                <img src={course.image} alt={course.title} className="w-full h-full object-cover" />
+                {course.image ? (
+                  <img src={course.image} alt={course.title} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center bg-gray-100 text-sm text-gray-500">
+                    No image
+                  </div>
+                )}
               </div>
               <CardContent className="p-6">
                 <div className="text-center mb-6">
@@ -205,7 +221,16 @@ export function CourseDetails({ id }: CourseDetailsProps) {
                   <p className="text-gray-600">100% Free, No Hidden Costs</p>
                 </div>
 
-                <Button className="w-full bg-[#F59E0B] hover:bg-[#F59E0B]/90 text-white py-6 text-lg mb-4">
+                <Button
+                  className="w-full bg-[#F59E0B] hover:bg-[#F59E0B]/90 text-white py-6 text-lg mb-4"
+                  onClick={() => {
+                    if (!userRole) {
+                      router.push('/login');
+                      return;
+                    }
+                    router.push('/dashboard/student');
+                  }}
+                >
                   Enroll Now - It's Free!
                 </Button>
 

@@ -1,29 +1,151 @@
 "use client";
 
-import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 type UserRole = 'student' | 'teacher' | 'admin' | null;
 
+interface UserProfile {
+  name: string;
+  email: string;
+  role: Exclude<UserRole, null>;
+  avatar?: string;
+  bio?: string;
+  professionalism?: string;
+  rating?: number;
+  graduationYear?: string;
+  expertise?: string;
+  experienceYears?: string;
+}
+
 interface AuthContextValue {
   userRole: UserRole;
-  login: (role: Exclude<UserRole, null>) => void;
+  profile: UserProfile | null;
+  login: (role: Exclude<UserRole, null>, profile?: Partial<UserProfile>) => void;
   logout: () => void;
+  updateProfile: (updates: Partial<UserProfile>) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+const PROFILE_KEY = 'alinhub.profile.v1';
+const ROLE_KEY = 'alinhub.role.v1';
+
+function readStoredProfile(): UserProfile | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+  try {
+    const raw = window.localStorage.getItem(PROFILE_KEY);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw) as UserProfile;
+    return parsed && parsed.role ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function readStoredRole(): UserRole {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+  const raw = window.localStorage.getItem(ROLE_KEY);
+  if (!raw) {
+    return null;
+  }
+  return raw as UserRole;
+}
+
+function writeStoredProfile(profile: UserProfile | null) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  if (!profile) {
+    window.localStorage.removeItem(PROFILE_KEY);
+    return;
+  }
+  window.localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+}
+
+function writeStoredRole(role: UserRole) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  if (!role) {
+    window.localStorage.removeItem(ROLE_KEY);
+    return;
+  }
+  window.localStorage.setItem(ROLE_KEY, role);
+}
+
+function formatNameFromEmail(email: string) {
+  const base = email.split('@')[0] ?? '';
+  if (!base) {
+    return '';
+  }
+  return base
+    .replace(/[._-]+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [userRole, setUserRole] = useState<UserRole>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const hasLoaded = useRef(false);
 
-  const login = useCallback((role: Exclude<UserRole, null>) => {
+  useEffect(() => {
+    const storedProfile = readStoredProfile();
+    const storedRole = readStoredRole();
+    if (storedProfile) {
+      setProfile(storedProfile);
+      setUserRole(storedProfile.role);
+    } else if (storedRole) {
+      setUserRole(storedRole);
+    }
+    hasLoaded.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!hasLoaded.current) {
+      return;
+    }
+    writeStoredRole(userRole);
+    writeStoredProfile(profile);
+  }, [userRole, profile]);
+
+  const login = useCallback((role: Exclude<UserRole, null>, nextProfile?: Partial<UserProfile>) => {
     setUserRole(role);
+    setProfile((prev) => {
+      const fallbackEmail = nextProfile?.email ?? prev?.email ?? '';
+      const fallbackName = nextProfile?.name ?? prev?.name ?? (formatNameFromEmail(fallbackEmail) || role);
+      return {
+        name: fallbackName,
+        email: fallbackEmail,
+        role,
+        avatar: nextProfile?.avatar ?? prev?.avatar,
+      };
+    });
   }, []);
 
   const logout = useCallback(() => {
     setUserRole(null);
+    setProfile(null);
   }, []);
 
-  const value = useMemo<AuthContextValue>(() => ({ userRole, login, logout }), [userRole, login, logout]);
+  const updateProfile = useCallback((updates: Partial<UserProfile>) => {
+    setProfile((prev) => {
+      if (!prev) {
+        return null;
+      }
+      return { ...prev, ...updates, role: prev.role };
+    });
+  }, []);
+
+  const value = useMemo<AuthContextValue>(
+    () => ({ userRole, profile, login, logout, updateProfile }),
+    [userRole, profile, login, logout, updateProfile]
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
