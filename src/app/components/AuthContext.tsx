@@ -5,6 +5,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 type UserRole = 'student' | 'teacher' | 'admin' | null;
 
 interface UserProfile {
+  id: string; // Added id field
   name: string;
   email: string;
   role: Exclude<UserRole, null>;
@@ -89,6 +90,11 @@ function formatNameFromEmail(email: string) {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+// Generate a unique ID for users
+function generateUserId(): string {
+  return `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [userRole, setUserRole] = useState<UserRole>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -115,15 +121,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [userRole, profile]);
 
   const login = useCallback((role: Exclude<UserRole, null>, nextProfile?: Partial<UserProfile>) => {
+    const userId = nextProfile?.id || generateUserId();
+    
     setUserRole(role);
     setProfile((prev) => {
       const fallbackEmail = nextProfile?.email ?? prev?.email ?? '';
       const fallbackName = nextProfile?.name ?? prev?.name ?? (formatNameFromEmail(fallbackEmail) || role);
+      
       return {
+        id: userId,
         name: fallbackName,
         email: fallbackEmail,
         role,
         avatar: nextProfile?.avatar ?? prev?.avatar,
+        bio: nextProfile?.bio ?? prev?.bio,
+        professionalism: nextProfile?.professionalism ?? prev?.professionalism,
+        rating: nextProfile?.rating ?? prev?.rating,
+        graduationYear: nextProfile?.graduationYear ?? prev?.graduationYear,
+        expertise: nextProfile?.expertise ?? prev?.expertise,
+        experienceYears: nextProfile?.experienceYears ?? prev?.experienceYears,
       };
     });
   }, []);
@@ -136,9 +152,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const updateProfile = useCallback((updates: Partial<UserProfile>) => {
     setProfile((prev) => {
       if (!prev) {
-        return null;
+        // If there's no profile but we're trying to update, create a new one
+        const userId = updates.id || generateUserId();
+        return {
+          id: userId,
+          name: updates.name || 'User',
+          email: updates.email || '',
+          role: updates.role || 'student',
+          avatar: updates.avatar,
+          bio: updates.bio,
+          professionalism: updates.professionalism,
+          rating: updates.rating,
+          graduationYear: updates.graduationYear,
+          expertise: updates.expertise,
+          experienceYears: updates.experienceYears,
+        };
       }
-      return { ...prev, ...updates, role: prev.role };
+      // Preserve the existing id unless explicitly changed
+      const updatedId = updates.id || prev.id;
+      return { ...prev, ...updates, id: updatedId };
     });
   }, []);
 

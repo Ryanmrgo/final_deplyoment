@@ -6,18 +6,17 @@ import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { categories } from '@/app/data/mockData';
-import { Category, Course } from '@/app/types/index';
 import { Filter, Search } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 export function Courses() {
-  const { publicCourses } = useCourses();
+  const { publicCourses, isEnrolled, getEnrollmentDate } = useCourses();
   const searchParams = useSearchParams();
   const categoryFromUrl = searchParams.get('category');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(categoryFromUrl);
-  const [filteredCourses, setFilteredCourses] = useState<Course[]>(publicCourses);
+  const [filteredCourses, setFilteredCourses] = useState(publicCourses);
 
   useEffect(() => {
     setSelectedCategory(categoryFromUrl);
@@ -28,13 +27,13 @@ export function Courses() {
 
     // Filter by category
     if (selectedCategory) {
-      result = result.filter((course: Course) => course.categoryId === selectedCategory);
+      result = result.filter((course) => course.categoryId === selectedCategory);
     }
 
     // Filter by search query
     if (searchQuery) {
       result = result.filter(
-        (course: Course) =>
+        (course) =>
           course.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
           course.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
           course.category.toLowerCase().includes(searchQuery.toLowerCase())
@@ -63,7 +62,7 @@ export function Courses() {
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
               <Input
-                placeholder="Search courses..."
+                placeholder="Search courses by title, description, or category..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10 py-6 text-lg bg-white"
@@ -88,7 +87,7 @@ export function Courses() {
             >
               All Categories
             </Button>
-            {categories.map((category: Category) => (
+            {categories.map((category) => (
               <Button
                 key={category.id}
                 variant={selectedCategory === category.id ? 'default' : 'outline'}
@@ -116,18 +115,32 @@ export function Courses() {
                 {' '}
                 in{' '}
                 <Badge className="bg-[#1E3A8A]">
-                  {categories.find((c: Category) => c.id === selectedCategory)?.name}
+                  {categories.find((c) => c.id === selectedCategory)?.name}
                 </Badge>
               </span>
             )}
           </p>
+          {/* Show enrolled courses count */}
+          <div className="mt-2">
+            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+              <span className="font-semibold">
+                {filteredCourses.filter(c => isEnrolled(c.id)).length}
+              </span> courses enrolled
+            </Badge>
+          </div>
         </div>
 
         {/* Course Grid */}
         {filteredCourses.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {filteredCourses.map((course: Course) => (
-              <CourseCard key={course.id} {...course} />
+            {filteredCourses.map((course) => (
+              <CourseCard
+                key={course.id}
+                {...course}
+                isEnrolled={isEnrolled(course.id)}
+                enrollmentDate={getEnrollmentDate(course.id) || undefined}
+                userProgress={course.userProgress || 0}
+              />
             ))}
           </div>
         ) : (

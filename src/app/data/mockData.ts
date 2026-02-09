@@ -39,13 +39,13 @@ export const courses = [
         id: '1',
         title: 'Introduction to Web Development',
         lessons: [
-          { title: 'What is Web Development?' },
-          { title: 'Setting up your environment' },
+          'What is Web Development?',
+          'Setting up your environment',
           { 
             title: 'Basic HTML structure',
             files: [
-              { name: 'HTML Basics.pdf', dataUrl: '#' },
-              { name: 'Code Examples.zip', dataUrl: '#' }
+              { name: 'HTML Basics.pdf', type: 'pdf', dataUrl: '/files/html-basics.pdf' },
+              { name: 'Code Examples.zip', type: 'zip', dataUrl: '/files/code-examples.zip' }
             ]
           },
         ],
@@ -54,13 +54,13 @@ export const courses = [
         id: '2',
         title: 'HTML & CSS Fundamentals',
         lessons: [
-          { title: 'HTML elements and attributes' },
-          { title: 'CSS styling basics' },
+          'HTML elements and attributes',
+          'CSS styling basics',
           { 
             title: 'Responsive design principles',
             files: [
-              { name: 'CSS Grid Guide.pdf', dataUrl: '#' },
-              { name: 'Responsive Examples.zip', dataUrl: '#' }
+              { name: 'CSS Grid Guide.pdf', type: 'pdf', dataUrl: '/files/css-grid-guide.pdf' },
+              { name: 'Responsive Examples.zip', type: 'zip', dataUrl: '/files/responsive-examples.zip' }
             ]
           },
         ],
@@ -69,13 +69,13 @@ export const courses = [
         id: '3',
         title: 'JavaScript Essentials',
         lessons: [
-          { title: 'Variables and data types' },
-          { title: 'Functions and scope' },
+          'Variables and data types',
+          'Functions and scope',
           { 
             title: 'DOM manipulation',
             files: [
-              { name: 'JavaScript Basics.pdf', dataUrl: '#' },
-              { name: 'DOM Examples.zip', dataUrl: '#' }
+              { name: 'JavaScript Basics.pdf', type: 'pdf', dataUrl: '/files/javascript-basics.pdf' },
+              { name: 'DOM Examples.zip', type: 'zip', dataUrl: '/files/dom-examples.zip' }
             ]
           },
         ],
@@ -84,13 +84,13 @@ export const courses = [
         id: '4',
         title: 'React Development',
         lessons: [
-          { title: 'Components and props' },
-          { title: 'State management' },
+          'Components and props',
+          'State management',
           { 
             title: 'Building real applications',
             files: [
-              { name: 'React Guide.pdf', dataUrl: '#' },
-              { name: 'Project Starter.zip', dataUrl: '#' }
+              { name: 'React Guide.pdf', type: 'pdf', dataUrl: '/files/react-guide.pdf' },
+              { name: 'Project Starter.zip', type: 'zip', dataUrl: '/files/project-starter.zip' }
             ]
           },
         ],
@@ -129,13 +129,13 @@ export const courses = [
         id: '1',
         title: 'Python Basics for Data Science',
         lessons: [
-          { title: 'Python fundamentals' },
-          { title: 'Data structures' },
+          'Python fundamentals',
+          'Data structures',
           { 
             title: 'Working with files',
             files: [
-              { name: 'Python Basics.pdf', dataUrl: '#' },
-              { name: 'Data Structures Examples.zip', dataUrl: '#' }
+              { name: 'Python Basics.pdf', type: 'pdf', dataUrl: '/files/python-basics.pdf' },
+              { name: 'Data Structures Examples.zip', type: 'zip', dataUrl: '/files/data-structures-examples.zip' }
             ]
           },
         ],
@@ -144,13 +144,13 @@ export const courses = [
         id: '2',
         title: 'Data Analysis with Pandas',
         lessons: [
-          { title: 'DataFrames and Series' },
-          { title: 'Data cleaning' },
+          'DataFrames and Series',
+          'Data cleaning',
           { 
             title: 'Data transformation',
             files: [
-              { name: 'Pandas Guide.pdf', dataUrl: '#' },
-              { name: 'Data Analysis Examples.zip', dataUrl: '#' }
+              { name: 'Pandas Guide.pdf', type: 'pdf', dataUrl: '/files/pandas-guide.pdf' },
+              { name: 'Data Analysis Examples.zip', type: 'zip', dataUrl: '/files/data-analysis-examples.zip' }
             ]
           },
         ],
@@ -159,13 +159,13 @@ export const courses = [
         id: '3',
         title: 'Data Visualization',
         lessons: [
-          { title: 'Matplotlib basics' },
-          { title: 'Seaborn for statistical plots' },
+          'Matplotlib basics',
+          'Seaborn for statistical plots',
           { 
             title: 'Creating dashboards',
             files: [
-              { name: 'Visualization Guide.pdf', dataUrl: '#' },
-              { name: 'Dashboard Templates.zip', dataUrl: '#' }
+              { name: 'Visualization Guide.pdf', type: 'pdf', dataUrl: '/files/visualization-guide.pdf' },
+              { name: 'Dashboard Templates.zip', type: 'zip', dataUrl: '/files/dashboard-templates.zip' }
             ]
           },
         ],
@@ -203,13 +203,17 @@ export const courses = [
         id: '1',
         title: 'Getting Started with React Native',
         lessons: [
-          { title: 'Setting up development environment' },
-          { title: 'React Native basics' },
+          'Setting up development environment',
+          { 
+            title: 'React Native basics',
+            files: [
+              { name: 'React Native Setup.pdf', type: 'pdf', dataUrl: '/files/react-native-setup.pdf' }
+            ]
+          },
           { 
             title: 'Understanding components',
             files: [
-              { name: 'React Native Setup.pdf', dataUrl: '#' },
-              { name: 'Component Examples.zip', dataUrl: '#' }
+              { name: 'Component Examples.zip', type: 'zip', dataUrl: '/files/component-examples.zip' }
             ]
           },
         ],
@@ -218,13 +222,17 @@ export const courses = [
         id: '2',
         title: 'Building UI Components',
         lessons: [
-          { title: 'Styling in React Native' },
-          { title: 'Navigation' },
+          'Styling in React Native',
+          { 
+            title: 'Navigation',
+            files: [
+              { name: 'Navigation Guide.pdf', type: 'pdf', dataUrl: '/files/navigation-guide.pdf' }
+            ]
+          },
           { 
             title: 'Forms and user input',
             files: [
-              { name: 'UI Components Guide.pdf', dataUrl: '#' },
-              { name: 'Form Examples.zip', dataUrl: '#' }
+              { name: 'Form Examples.zip', type: 'zip', dataUrl: '/files/form-examples.zip' }
             ]
           },
         ],
@@ -260,13 +268,17 @@ export const courses = [
         id: '1',
         title: 'Introduction to UI/UX',
         lessons: [
-          { title: 'What is UI/UX?' },
-          { title: 'Design thinking process' },
+          'What is UI/UX?',
+          { 
+            title: 'Design thinking process',
+            files: [
+              { name: 'Design Process.pdf', type: 'pdf', dataUrl: '/files/design-process.pdf' }
+            ]
+          },
           { 
             title: 'User research methods',
             files: [
-              { name: 'UI/UX Basics.pdf', dataUrl: '#' },
-              { name: 'Research Templates.zip', dataUrl: '#' }
+              { name: 'Research Templates.zip', type: 'zip', dataUrl: '/files/research-templates.zip' }
             ]
           },
         ],
@@ -275,13 +287,17 @@ export const courses = [
         id: '2',
         title: 'Design Principles',
         lessons: [
-          { title: 'Color theory' },
-          { title: 'Typography' },
+          'Color theory',
+          { 
+            title: 'Typography',
+            files: [
+              { name: 'Typography Guide.pdf', type: 'pdf', dataUrl: '/files/typography-guide.pdf' }
+            ]
+          },
           { 
             title: 'Layout and composition',
             files: [
-              { name: 'Design Principles.pdf', dataUrl: '#' },
-              { name: 'Figma Templates.zip', dataUrl: '#' }
+              { name: 'Figma Templates.zip', type: 'zip', dataUrl: '/files/figma-templates.zip' }
             ]
           },
         ],
@@ -319,13 +335,17 @@ export const courses = [
         id: '1',
         title: 'Introduction to Digital Marketing',
         lessons: [
-          { title: 'Digital marketing landscape' },
-          { title: 'Setting goals' },
+          'Digital marketing landscape',
+          { 
+            title: 'Setting goals',
+            files: [
+              { name: 'Goal Setting Worksheet.pdf', type: 'pdf', dataUrl: '/files/goal-worksheet.pdf' }
+            ]
+          },
           { 
             title: 'Understanding your audience',
             files: [
-              { name: 'Marketing Basics.pdf', dataUrl: '#' },
-              { name: 'Audience Analysis Templates.zip', dataUrl: '#' }
+              { name: 'Audience Analysis Templates.zip', type: 'zip', dataUrl: '/files/audience-templates.zip' }
             ]
           },
         ],
@@ -334,13 +354,18 @@ export const courses = [
         id: '2',
         title: 'SEO Fundamentals',
         lessons: [
-          { title: 'How search engines work' },
-          { title: 'Keyword research' },
+          'How search engines work',
+          { 
+            title: 'Keyword research',
+            files: [
+              { name: 'Keyword Research Guide.pdf', type: 'pdf', dataUrl: '/files/keyword-research.pdf' }
+            ]
+          },
           { 
             title: 'On-page optimization',
             files: [
-              { name: 'SEO Guide.pdf', dataUrl: '#' },
-              { name: 'SEO Tools List.zip', dataUrl: '#' }
+              { name: 'SEO Checklist.pdf', type: 'pdf', dataUrl: '/files/seo-checklist.pdf' },
+              { name: 'SEO Tools List.zip', type: 'zip', dataUrl: '/files/seo-tools.zip' }
             ]
           },
         ],
@@ -376,13 +401,17 @@ export const courses = [
         id: '1',
         title: 'Spanish Basics',
         lessons: [
-          { title: 'Greetings and introductions' },
-          { title: 'Pronunciation guide' },
+          'Greetings and introductions',
+          { 
+            title: 'Pronunciation guide',
+            files: [
+              { name: 'Pronunciation Audio.zip', type: 'zip', dataUrl: '/files/pronunciation-audio.zip' }
+            ]
+          },
           { 
             title: 'Basic grammar',
             files: [
-              { name: 'Spanish Basics.pdf', dataUrl: '#' },
-              { name: 'Pronunciation Audio.zip', dataUrl: '#' }
+              { name: 'Grammar Guide.pdf', type: 'pdf', dataUrl: '/files/grammar-guide.pdf' }
             ]
           },
         ],
@@ -391,13 +420,17 @@ export const courses = [
         id: '2',
         title: 'Everyday Conversations',
         lessons: [
-          { title: 'At the restaurant' },
-          { title: 'Shopping' },
+          'At the restaurant',
+          { 
+            title: 'Shopping',
+            files: [
+              { name: 'Shopping Vocabulary.pdf', type: 'pdf', dataUrl: '/files/shopping-vocabulary.pdf' }
+            ]
+          },
           { 
             title: 'Asking for directions',
             files: [
-              { name: 'Conversation Guide.pdf', dataUrl: '#' },
-              { name: 'Practice Dialogues.zip', dataUrl: '#' }
+              { name: 'Practice Dialogues.zip', type: 'zip', dataUrl: '/files/practice-dialogues.zip' }
             ]
           },
         ],
@@ -409,7 +442,7 @@ export const courses = [
   },
 ];
 
-// The rest of the file remains the same...
+// The rest of the file remains exactly the same...
 export const enrolledCourses = [
   {
     courseId: '1',

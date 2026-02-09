@@ -1,8 +1,11 @@
-import Link from 'next/link';
-import { Star, Users, Clock } from 'lucide-react';
-import { Card, CardContent, CardFooter } from '@/app/components/ui/card';
-import { Button } from '@/app/components/ui/button';
+"use client";
+
+import { useCourses } from '@/app/components/CoursesContext';
 import { Badge } from '@/app/components/ui/badge';
+import { Button } from '@/app/components/ui/button';
+import { Card, CardContent, CardFooter } from '@/app/components/ui/card';
+import { CheckCircle, Clock, Star, Users } from 'lucide-react';
+import Link from 'next/link';
 
 interface CourseCardProps {
   id: string;
@@ -18,7 +21,10 @@ interface CourseCardProps {
   students: number;
   level: string;
   duration: string;
-  image: string;
+  image?: string;
+  isEnrolled?: boolean;
+  enrollmentDate?: string;
+  userProgress?: number;
 }
 
 export function CourseCard({
@@ -33,11 +39,41 @@ export function CourseCard({
   level,
   duration,
   image,
+  isEnrolled = false,
+  enrollmentDate,
+  userProgress = 0,
 }: CourseCardProps) {
+  const { isEnrolled: checkEnrolled } = useCourses();
+  const enrolled = isEnrolled || checkEnrolled(id);
   const hasImage = Boolean(image && image.trim());
 
   return (
-    <Card className="overflow-hidden hover:shadow-xl transition-shadow duration-300 bg-white">
+    <Card className="overflow-hidden hover:shadow-xl transition-shadow duration-300 bg-white relative">
+      {/* Enrollment Badge */}
+      {enrolled && (
+        <div className="absolute top-3 left-3 z-10">
+          <Badge className="bg-green-600 hover:bg-green-700 text-white flex items-center gap-1">
+            <CheckCircle className="w-3 h-3" />
+            Enrolled
+          </Badge>
+        </div>
+      )}
+
+      {/* Progress Bar for enrolled courses */}
+      {enrolled && userProgress > 0 && (
+        <div className="absolute top-12 left-3 right-3 z-10">
+          <div className="w-full bg-gray-200 rounded-full h-2">
+            <div 
+              className="bg-green-500 h-2 rounded-full" 
+              style={{ width: `${userProgress}%` }}
+            ></div>
+          </div>
+          <span className="text-xs text-white bg-black/70 px-2 py-1 rounded mt-1 inline-block">
+            {userProgress}% Complete
+          </span>
+        </div>
+      )}
+
       <div className="relative h-48 overflow-hidden">
         {hasImage ? (
           <img src={image} alt={title} className="w-full h-full object-cover hover:scale-105 transition-transform duration-300" />
@@ -74,15 +110,26 @@ export function CourseCard({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between">
           <Badge variant="outline" className="text-xs">{level}</Badge>
+          {enrolled && (
+            <Badge variant="secondary" className="text-xs bg-green-50 text-green-700 border-green-200">
+              Access Granted
+            </Badge>
+          )}
         </div>
+        
+        {enrollmentDate && (
+          <div className="mt-2 text-xs text-gray-500">
+            Enrolled on: {enrollmentDate}
+          </div>
+        )}
       </CardContent>
 
       <CardFooter className="p-5 pt-0">
         <Link href={`/courses/${id}`} className="w-full">
-          <Button className="w-full bg-[#F59E0B] hover:bg-[#F59E0B]/90 text-white">
-            View Course
+          <Button className={`w-full ${enrolled ? 'bg-[#1E3A8A] hover:bg-[#1E3A8A]/90' : 'bg-[#F59E0B] hover:bg-[#F59E0B]/90'} text-white`}>
+            {enrolled ? (userProgress > 0 ? 'Continue Learning' : 'Start Learning') : 'View Course'}
           </Button>
         </Link>
       </CardFooter>
