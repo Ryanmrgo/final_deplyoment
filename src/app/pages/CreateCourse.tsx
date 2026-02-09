@@ -10,7 +10,7 @@ import { Label } from '@/app/components/ui/label';
 import { Textarea } from '@/app/components/ui/textarea';
 import { categories } from '@/app/data/mockData';
 import { useAuth } from '@/app/components/AuthContext';
-import { useCourses, type Course } from '@/app/components/CoursesContext';
+import { useCourses, type Course, type SyllabusSection, type LessonAttachment } from '@/app/components/CoursesContext';
 
 export function CreateCourse() {
   const router = useRouter();
@@ -25,11 +25,11 @@ export function CreateCourse() {
   const [image, setImage] = useState('');
   const [imageName, setImageName] = useState('');
   const [isPublished, setIsPublished] = useState(false);
-  const [syllabus, setSyllabus] = useState([
+  const [syllabus, setSyllabus] = useState<SyllabusSection[]>([
     {
       id: '1',
       title: 'Getting Started',
-      lessons: [{ title: 'Introduction', files: [] }],
+      lessons: [{ title: 'Introduction', files: [] as LessonAttachment[] }],
     },
   ]);
   const [learningOutcomes, setLearningOutcomes] = useState<string[]>(['']);
@@ -57,29 +57,32 @@ export function CreateCourse() {
     Array.from(files).forEach((file) => {
       const reader = new FileReader();
       reader.onload = () => {
-        if (typeof reader.result === 'string') {
-          setSyllabus((prev) =>
-            prev.map((section, sIndex) => {
-              if (sIndex !== sectionIndex) {
-                return section;
-              }
-              const updatedLessons = section.lessons.map((lesson, lIndex) => {
-                if (lIndex !== lessonIndex) {
-                  return lesson;
-                }
-                const current = typeof lesson === 'string' ? { title: lesson, files: [] } : lesson;
-                return {
-                  ...current,
-                  files: [
-                    ...(current.files ?? []),
-                    { name: file.name, type: file.type || 'application/octet-stream', dataUrl: reader.result },
-                  ],
-                };
-              });
-              return { ...section, lessons: updatedLessons };
-            })
-          );
+        if (typeof reader.result !== 'string') {
+          return;
         }
+        const attachment = {
+          name: file.name,
+          type: file.type || 'application/octet-stream',
+          dataUrl: reader.result,
+        };
+        setSyllabus((prev) =>
+          prev.map((section, sIndex) => {
+            if (sIndex !== sectionIndex) {
+              return section;
+            }
+            const updatedLessons = section.lessons.map((lesson, lIndex) => {
+              if (lIndex !== lessonIndex) {
+                return lesson;
+              }
+              const current = typeof lesson === 'string' ? { title: lesson, files: [] } : lesson;
+              return {
+                ...current,
+                files: [...(current.files ?? []), attachment],
+              };
+            });
+            return { ...section, lessons: updatedLessons };
+          })
+        );
       };
       reader.readAsDataURL(file);
     });
@@ -130,6 +133,7 @@ export function CreateCourse() {
       categoryId: selectedCategory.id,
       instructor: {
         name: 'AlinHub Teacher',
+        bio: 'Instructor at AlinHub',
         avatar: '👩‍🏫',
       },
       rating: 0,

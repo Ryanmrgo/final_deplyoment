@@ -242,15 +242,21 @@ export function TeacherDashboard() {
                     Create New Course
                   </Button>
                 </Link>
-                <Button variant="outline" className="w-full border-[#1E3A8A] text-[#1E3A8A] hover:bg-[#1E3A8A] hover:text-white">
-                  Manage Students
-                </Button>
-                <Button variant="outline" className="w-full border-[#1E3A8A] text-[#1E3A8A] hover:bg-[#1E3A8A] hover:text-white">
-                  View All Reviews
-                </Button>
-                <Button variant="outline" className="w-full border-[#1E3A8A] text-[#1E3A8A] hover:bg-[#1E3A8A] hover:text-white">
-                  Course Analytics
-                </Button>
+                <Link href="/dashboard/teacher/students" className="block">
+                  <Button variant="outline" className="w-full border-[#1E3A8A] text-[#1E3A8A] hover:bg-[#1E3A8A] hover:text-white">
+                    Manage Students
+                  </Button>
+                </Link>
+                <Link href="/dashboard/teacher/reviews" className="block">
+                  <Button variant="outline" className="w-full border-[#1E3A8A] text-[#1E3A8A] hover:bg-[#1E3A8A] hover:text-white">
+                    View All Reviews
+                  </Button>
+                </Link>
+                <Link href="/dashboard/teacher/analytics" className="block">
+                  <Button variant="outline" className="w-full border-[#1E3A8A] text-[#1E3A8A] hover:bg-[#1E3A8A] hover:text-white">
+                    Course Analytics
+                  </Button>
+                </Link>
               </CardContent>
             </Card>
 
