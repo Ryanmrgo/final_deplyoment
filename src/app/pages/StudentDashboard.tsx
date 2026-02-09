@@ -7,12 +7,14 @@ import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { Progress } from '@/app/components/ui/progress';
 import { achievements } from '@/app/data/mockData';
-import { Award, BookOpen, Clock, TrendingUp } from 'lucide-react';
+import { Award, BookOpen, Clock, MessageSquare, Trash2, TrendingUp } from 'lucide-react';
 import Link from 'next/link';
+import { useState } from 'react';
 
 export function StudentDashboard() {
   const { userRole, profile } = useAuth();
-  const { getUserEnrolledCourses, hasUserReviewed } = useCourses();
+  const { getUserEnrolledCourses, hasUserReviewed, removeEnrollment } = useCourses();
+  const [removingCourseId, setRemovingCourseId] = useState<string | null>(null);
   
   if (userRole !== 'student') {
     return (
@@ -62,6 +64,16 @@ export function StudentDashboard() {
   const activeCourses = sortedCourses.filter(c => (c.userProgress || 0) > 0 && (c.userProgress || 0) < 100);
   const completedCourses = sortedCourses.filter(c => (c.userProgress || 0) === 100);
   const unstartedCourses = sortedCourses.filter(c => (c.userProgress || 0) === 0);
+
+  const handleRemoveCourse = (courseId: string) => {
+    if (window.confirm('Are you sure you want to remove this course? Your progress will be lost.')) {
+      setRemovingCourseId(courseId);
+      removeEnrollment(courseId);
+      setTimeout(() => {
+        setRemovingCourseId(null);
+      }, 500);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
@@ -192,18 +204,28 @@ export function StudentDashboard() {
                                 <div className="flex gap-2">
                                   <Link href={`/courses/${course.id}`}>
                                     <Button className="bg-[#F59E0B] hover:bg-[#F59E0B]/90 text-white">
-                                      {progress === 100 ? 'Review Course' : progress > 0 ? 'Continue' : 'Start'}
+                                      {progress === 100 ? 'Learned' : progress > 0 ? 'Continue Learning' : 'Start Learning'}
                                     </Button>
                                   </Link>
-                                  {/* Only show review button for courses that are NOT completed AND have progress >= 50% AND user hasn't reviewed yet */}
-                                  {progress < 100 && !hasUserReviewed(course.id) && progress >= 50 && (
+                                  {/* Only show review button for courses that have progress >= 50% AND user hasn't reviewed yet */}
+                                  {!hasUserReviewed(course.id) && progress >= 50 && (
                                     <Link href={`/courses/${course.id}`}>
                                       <Button variant="outline" className="border-[#1E3A8A] text-[#1E3A8A]">
-                                        <BookOpen className="w-4 h-4 mr-2" />
+                                        <MessageSquare className="w-4 h-4 mr-2" />
                                         Leave Review
                                       </Button>
                                     </Link>
                                   )}
+                                  {/* Remove Course Button */}
+                                  <Button
+                                    variant="outline"
+                                    onClick={() => handleRemoveCourse(course.id)}
+                                    disabled={removingCourseId === course.id}
+                                    className="border-red-200 text-red-700 hover:bg-red-50 hover:border-red-300"
+                                  >
+                                    <Trash2 className="w-4 h-4 mr-1" />
+                                    {removingCourseId === course.id ? 'Removing...' : 'Remove'}
+                                  </Button>
                                 </div>
                               </div>
                             </div>

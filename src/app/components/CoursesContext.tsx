@@ -1,15 +1,26 @@
-// app/components/CoursesContext.tsx - FIXED VERSION
+// app/components/CoursesContext.tsx - UPDATED VERSION
 "use client";
 
 import { courses as baseCourses } from '@/app/data/mockData';
-import { Course, Review } from '@/app/types/index';
+import { Course, Review } from '@/app/types/index'; // UPDATED: Added Assignment
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from './AuthContext';
 
 // =============== TYPES ===============
-export type LessonAttachment = { name: string; type: string; dataUrl: string };
-export type LessonItem = string | { title: string; files?: LessonAttachment[] };
-export type SyllabusSection = { id: string; title: string; lessons: LessonItem[] };
+export type AssignmentSubmission = {
+  id: string;
+  assignmentId: string;
+  courseId: string;
+  userId: string;
+  studentName: string;
+  submittedAt: string;
+  fileUrl?: string;
+  text?: string;
+  grade?: number;
+  feedback?: string;
+  status: 'submitted' | 'graded';
+  attachments?: any[]; // ADDED: To match shared type
+};
 
 export type UserReview = {
   rating: number;
@@ -24,13 +35,14 @@ interface CoursesContextValue {
   createdCourses: Course[];
   addCourse: (course: Course) => void;
   updateCourse: (id: string, updates: Partial<Course>) => void;
-  
+
   // Enrollment functions
   enrollInCourse: (courseId: string) => void;
+  removeEnrollment: (courseId: string) => void; // NEW: Remove enrollment
   isEnrolled: (courseId: string) => boolean;
   getUserEnrolledCourses: () => Course[];
   getEnrollmentDate: (courseId: string) => string | null;
-  
+
   // Review functions
   submitReview: (courseId: string, rating: number, comment: string) => void;
   updateReview: (courseId: string, rating: number, comment: string) => void;
@@ -38,6 +50,11 @@ interface CoursesContextValue {
   hasUserReviewed: (courseId: string) => boolean;
   getUserReview: (courseId: string) => Review | null;
   updateCourseProgress: (courseId: string, progress: number, completedLessons: number) => void;
+
+  // Assignment functions
+  submitAssignment: (courseId: string, assignmentId: string, submission: { fileUrl?: string; text?: string }) => void;
+  getAssignmentSubmission: (courseId: string, assignmentId: string) => AssignmentSubmission | null;
+  gradeAssignment: (courseId: string, assignmentId: string, grade: number, feedback: string) => void;
 }
 
 const CoursesContext = createContext<CoursesContextValue | undefined>(undefined);
@@ -48,6 +65,7 @@ const EDITS_STORAGE_KEY = 'alinhub.editedCourses.v1';
 const ENROLLMENT_STORAGE_KEY = 'alinhub.enrollments.v1';
 const REVIEWS_STORAGE_KEY = 'alinhub.userReviews.v1';
 const PROGRESS_STORAGE_KEY = 'alinhub.userProgress.v1';
+const ASSIGNMENT_SUBMISSIONS_KEY = 'alinhub.assignmentSubmissions.v1';
 
 // =============== STORAGE FUNCTIONS ===============
 function readStoredCourses(): Course[] {
@@ -65,7 +83,7 @@ function writeStoredCourses(courses: Course[]) {
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(courses));
 }
 
-function readStoredEdits(): Record<string, Course> {
+function readStoredEdits(): Record<string, Partial<Course>> {
   if (typeof window === 'undefined') return {};
   try {
     const raw = window.localStorage.getItem(EDITS_STORAGE_KEY);
@@ -75,7 +93,7 @@ function readStoredEdits(): Record<string, Course> {
   }
 }
 
-function writeStoredEdits(edits: Record<string, Course>) {
+function writeStoredEdits(edits: Record<string, Partial<Course>>) {
   if (typeof window === 'undefined') return;
   window.localStorage.setItem(EDITS_STORAGE_KEY, JSON.stringify(edits));
 }
@@ -125,14 +143,30 @@ function writeStoredProgress(progress: Record<string, { progress: number; comple
   window.localStorage.setItem(PROGRESS_STORAGE_KEY, JSON.stringify(progress));
 }
 
+function readStoredAssignmentSubmissions(): Record<string, AssignmentSubmission> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.localStorage.getItem(ASSIGNMENT_SUBMISSIONS_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeStoredAssignmentSubmissions(submissions: Record<string, AssignmentSubmission>) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(ASSIGNMENT_SUBMISSIONS_KEY, JSON.stringify(submissions));
+}
+
 // =============== PROVIDER COMPONENT ===============
 export function CoursesProvider({ children }: { children: React.ReactNode }) {
   const { profile } = useAuth();
   const [createdCourses, setCreatedCourses] = useState<Course[]>([]);
-  const [editedCourses, setEditedCourses] = useState<Record<string, Course>>({});
+  const [editedCourses, setEditedCourses] = useState<Record<string, Partial<Course>>>({});
   const [userEnrollments, setUserEnrollments] = useState<Record<string, { date: string; progress: number; completedLessons: number }>>({});
   const [userReviews, setUserReviews] = useState<Record<string, UserReview>>({});
   const [userProgress, setUserProgress] = useState<Record<string, { progress: number; completedLessons: number }>>({});
+  const [assignmentSubmissions, setAssignmentSubmissions] = useState<Record<string, AssignmentSubmission>>({});
   const hasLoaded = useRef(false);
 
   // Load all data from localStorage on mount
@@ -142,15 +176,16 @@ export function CoursesProvider({ children }: { children: React.ReactNode }) {
     setUserEnrollments(readStoredEnrollments());
     setUserReviews(readStoredReviews());
     setUserProgress(readStoredProgress());
+    setAssignmentSubmissions(readStoredAssignmentSubmissions());
     hasLoaded.current = true;
   }, []);
 
-  // =============== COURSE DATA MERGING (MUST COME FIRST) ===============
+  // =============== COURSE DATA MERGING ===============
   const mergedBaseCourses = useMemo(() => {
     return baseCourses.map((course) => {
       const enrollment = userEnrollments[course.id];
       const progress = userProgress[course.id] || { progress: 0, completedLessons: 0 };
-      
+
       return {
         ...course,
         ...(editedCourses[course.id] ?? {}),
@@ -163,7 +198,7 @@ export function CoursesProvider({ children }: { children: React.ReactNode }) {
   }, [editedCourses, userEnrollments, userProgress]);
 
   const allCourses = useMemo(() => [...mergedBaseCourses, ...createdCourses], [createdCourses, mergedBaseCourses]);
-  
+
   const publicCourses = useMemo(() => {
     return allCourses.filter((course) => course.isPublished !== false);
   }, [allCourses]);
@@ -176,8 +211,9 @@ export function CoursesProvider({ children }: { children: React.ReactNode }) {
       writeStoredEnrollments(userEnrollments);
       writeStoredReviews(userReviews);
       writeStoredProgress(userProgress);
+      writeStoredAssignmentSubmissions(assignmentSubmissions);
     }
-  }, [createdCourses, editedCourses, userEnrollments, userReviews, userProgress]);
+  }, [createdCourses, editedCourses, userEnrollments, userReviews, userProgress, assignmentSubmissions]);
 
   // =============== COURSE MANAGEMENT ===============
   const addCourse = useCallback((course: Course) => {
@@ -205,7 +241,7 @@ export function CoursesProvider({ children }: { children: React.ReactNode }) {
   // =============== ENROLLMENT FUNCTIONS ===============
   const enrollInCourse = useCallback((courseId: string) => {
     const enrollmentDate = new Date().toISOString().split('T')[0];
-    
+
     setUserEnrollments(prev => ({
       ...prev,
       [courseId]: {
@@ -233,14 +269,60 @@ export function CoursesProvider({ children }: { children: React.ReactNode }) {
         }));
       } else {
         // For created courses, update in createdCourses
-        setCreatedCourses(prev => prev.map(c => 
-          c.id === courseId 
-            ? { 
-                ...c, 
-                students: (c.students || 0) + 1,
-                isEnrolled: true,
-                enrollmentDate
-              } 
+        setCreatedCourses(prev => prev.map(c =>
+          c.id === courseId
+            ? {
+              ...c,
+              students: (c.students || 0) + 1,
+              isEnrolled: true,
+              enrollmentDate
+            }
+            : c
+        ));
+      }
+    }
+  }, [allCourses]);
+
+  // NEW: Remove enrollment function
+  const removeEnrollment = useCallback((courseId: string) => {
+    // Remove from enrollments
+    setUserEnrollments(prev => {
+      const newEnrollments = { ...prev };
+      delete newEnrollments[courseId];
+      return newEnrollments;
+    });
+
+    // Remove from progress
+    setUserProgress(prev => {
+      const newProgress = { ...prev };
+      delete newProgress[courseId];
+      return newProgress;
+    });
+
+    // Update course student count (decrement)
+    const course = allCourses.find(c => c.id === courseId);
+    if (course) {
+      const baseCourse = baseCourses.find(c => c.id === courseId);
+      if (baseCourse) {
+        setEditedCourses(prev => ({
+          ...prev,
+          [courseId]: {
+            ...baseCourse,
+            ...prev[courseId],
+            students: Math.max(0, (prev[courseId]?.students || baseCourse.students || 0) - 1),
+            isEnrolled: false,
+            enrollmentDate: undefined
+          }
+        }));
+      } else {
+        setCreatedCourses(prev => prev.map(c =>
+          c.id === courseId
+            ? {
+              ...c,
+              students: Math.max(0, (c.students || 0) - 1),
+              isEnrolled: false,
+              enrollmentDate: undefined
+            }
             : c
         ));
       }
@@ -263,7 +345,7 @@ export function CoursesProvider({ children }: { children: React.ReactNode }) {
   const submitReview = useCallback((courseId: string, rating: number, comment: string) => {
     const userName = profile?.name || 'Anonymous Student';
     const reviewDate = new Date().toISOString().split('T')[0];
-    
+
     // Store user's review
     const userReview: UserReview = {
       rating,
@@ -271,7 +353,7 @@ export function CoursesProvider({ children }: { children: React.ReactNode }) {
       date: reviewDate,
       courseId
     };
-    
+
     setUserReviews(prev => ({
       ...prev,
       [courseId]: userReview
@@ -292,8 +374,7 @@ export function CoursesProvider({ children }: { children: React.ReactNode }) {
     if (course) {
       const newReviews = [...course.reviews, newReview];
       const newRating = newReviews.reduce((sum, r) => sum + r.rating, 0) / newReviews.length;
-      
-      // Update in editedCourses for base courses, or createdCourses for created courses
+
       const baseCourse = baseCourses.find(c => c.id === courseId);
       if (baseCourse) {
         setEditedCourses(prev => ({
@@ -307,14 +388,14 @@ export function CoursesProvider({ children }: { children: React.ReactNode }) {
           }
         }));
       } else {
-        setCreatedCourses(prev => prev.map(c => 
-          c.id === courseId 
-            ? { 
-                ...c, 
-                reviews: newReviews,
-                rating: parseFloat(newRating.toFixed(1)),
-                reviewCount: newReviews.length
-              } 
+        setCreatedCourses(prev => prev.map(c =>
+          c.id === courseId
+            ? {
+              ...c,
+              reviews: newReviews,
+              rating: parseFloat(newRating.toFixed(1)),
+              reviewCount: newReviews.length
+            }
             : c
         ));
       }
@@ -327,7 +408,7 @@ export function CoursesProvider({ children }: { children: React.ReactNode }) {
 
     const userName = profile?.name || 'Anonymous Student';
     const reviewDate = new Date().toISOString().split('T')[0];
-    
+
     // Update user's review
     const updatedUserReview: UserReview = {
       rating,
@@ -335,7 +416,7 @@ export function CoursesProvider({ children }: { children: React.ReactNode }) {
       date: reviewDate,
       courseId
     };
-    
+
     setUserReviews(prev => ({
       ...prev,
       [courseId]: updatedUserReview
@@ -344,21 +425,20 @@ export function CoursesProvider({ children }: { children: React.ReactNode }) {
     // Find and update in course reviews
     const course = allCourses.find(c => c.id === courseId);
     if (course) {
-      const updatedReviews = course.reviews.map(review => 
-        (review.id.startsWith('user_') && review.userId === profile?.id) 
-          ? {
-              ...review,
-              student: userName,
-              rating,
-              comment,
-              date: reviewDate,
-              userId: profile?.id
-            }
+      const updatedReviews = course.reviews.map(review =>
+        (review.id.startsWith('user_') && 'userId' in review && review.userId === profile?.id) ? {
+          ...review,
+          student: userName,
+          rating,
+          comment,
+          date: reviewDate,
+          userId: profile?.id
+        }
           : review
       );
-      
+
       const newRating = updatedReviews.reduce((sum, r) => sum + r.rating, 0) / updatedReviews.length;
-      
+
       // Update course
       const baseCourse = baseCourses.find(c => c.id === courseId);
       if (baseCourse) {
@@ -373,14 +453,14 @@ export function CoursesProvider({ children }: { children: React.ReactNode }) {
           }
         }));
       } else {
-        setCreatedCourses(prev => prev.map(c => 
-          c.id === courseId 
-            ? { 
-                ...c, 
-                reviews: updatedReviews,
-                rating: parseFloat(newRating.toFixed(1)),
-                reviewCount: updatedReviews.length
-              } 
+        setCreatedCourses(prev => prev.map(c =>
+          c.id === courseId
+            ? {
+              ...c,
+              reviews: updatedReviews,
+              rating: parseFloat(newRating.toFixed(1)),
+              reviewCount: updatedReviews.length
+            }
             : c
         ));
       }
@@ -398,14 +478,13 @@ export function CoursesProvider({ children }: { children: React.ReactNode }) {
     // Remove from course reviews
     const course = allCourses.find(c => c.id === courseId);
     if (course) {
-      const updatedReviews = course.reviews.filter(review => 
-        !(review.id.startsWith('user_') && review.userId === profile?.id)
-      );
-      
-      const newRating = updatedReviews.length > 0 
+      const updatedReviews = course.reviews.filter(review =>
+        !(review.id.startsWith('user_') && 'userId' in review && review.userId === profile?.id));
+
+      const newRating = updatedReviews.length > 0
         ? updatedReviews.reduce((sum, r) => sum + r.rating, 0) / updatedReviews.length
         : 0;
-      
+
       // Update course
       const baseCourse = baseCourses.find(c => c.id === courseId);
       if (baseCourse) {
@@ -420,14 +499,14 @@ export function CoursesProvider({ children }: { children: React.ReactNode }) {
           }
         }));
       } else {
-        setCreatedCourses(prev => prev.map(c => 
-          c.id === courseId 
-            ? { 
-                ...c, 
-                reviews: updatedReviews,
-                rating: parseFloat(newRating.toFixed(1)),
-                reviewCount: updatedReviews.length
-              } 
+        setCreatedCourses(prev => prev.map(c =>
+          c.id === courseId
+            ? {
+              ...c,
+              reviews: updatedReviews,
+              rating: parseFloat(newRating.toFixed(1)),
+              reviewCount: updatedReviews.length
+            }
             : c
         ));
       }
@@ -441,7 +520,7 @@ export function CoursesProvider({ children }: { children: React.ReactNode }) {
   const getUserReview = useCallback((courseId: string) => {
     const reviewData = userReviews[courseId];
     if (!reviewData) return null;
-    
+
     return {
       id: `user_${courseId}`,
       student: profile?.name || 'You',
@@ -475,6 +554,67 @@ export function CoursesProvider({ children }: { children: React.ReactNode }) {
     }
   }, [userEnrollments]);
 
+  // =============== ASSIGNMENT FUNCTIONS ===============
+  const submitAssignment = useCallback((courseId: string, assignmentId: string, submission: { fileUrl?: string; text?: string }) => {
+    if (!profile?.id) return;
+
+    const submissionId = `submission_${Date.now()}`;
+    const submittedAt = new Date().toISOString();
+
+    const newSubmission: AssignmentSubmission = {
+      id: submissionId,
+      assignmentId,
+      courseId,
+      userId: profile.id,
+      studentName: profile.name || 'Student',
+      submittedAt,
+      fileUrl: submission.fileUrl,
+      text: submission.text,
+      status: 'submitted',
+      grade: undefined,
+      feedback: undefined,
+      attachments: submission.fileUrl ? [{ // ADDED: attachments field
+        name: 'submission',
+        type: 'file',
+        dataUrl: submission.fileUrl
+      }] : undefined
+    };
+
+    // Generate a unique key for storage
+    const storageKey = `${profile.id}_${courseId}_${assignmentId}`;
+
+    setAssignmentSubmissions(prev => ({
+      ...prev,
+      [storageKey]: newSubmission
+    }));
+  }, [profile]);
+
+  const getAssignmentSubmission = useCallback((courseId: string, assignmentId: string) => {
+    if (!profile?.id) return null;
+
+    const storageKey = `${profile.id}_${courseId}_${assignmentId}`;
+    return assignmentSubmissions[storageKey] || null;
+  }, [profile, assignmentSubmissions]);
+
+  const gradeAssignment = useCallback((courseId: string, assignmentId: string, grade: number, feedback: string) => {
+    if (!profile?.id) return;
+
+    const storageKey = `${profile.id}_${courseId}_${assignmentId}`;
+    const existingSubmission = assignmentSubmissions[storageKey];
+
+    if (existingSubmission) {
+      setAssignmentSubmissions(prev => ({
+        ...prev,
+        [storageKey]: {
+          ...existingSubmission,
+          grade,
+          feedback,
+          status: 'graded'
+        }
+      }));
+    }
+  }, [profile, assignmentSubmissions]);
+
   // =============== CONTEXT VALUE ===============
   const value = useMemo<CoursesContextValue>(
     () => ({
@@ -485,6 +625,7 @@ export function CoursesProvider({ children }: { children: React.ReactNode }) {
       updateCourse,
       // Enrollment functions
       enrollInCourse,
+      removeEnrollment,
       isEnrolled,
       getUserEnrolledCourses,
       getEnrollmentDate,
@@ -495,7 +636,11 @@ export function CoursesProvider({ children }: { children: React.ReactNode }) {
       hasUserReviewed,
       getUserReview,
       // Progress function
-      updateCourseProgress
+      updateCourseProgress,
+      // Assignment functions
+      submitAssignment,
+      getAssignmentSubmission,
+      gradeAssignment
     }),
     [
       allCourses,
@@ -504,6 +649,7 @@ export function CoursesProvider({ children }: { children: React.ReactNode }) {
       addCourse,
       updateCourse,
       enrollInCourse,
+      removeEnrollment,
       isEnrolled,
       getUserEnrolledCourses,
       getEnrollmentDate,
@@ -512,7 +658,10 @@ export function CoursesProvider({ children }: { children: React.ReactNode }) {
       removeReview,
       hasUserReviewed,
       getUserReview,
-      updateCourseProgress
+      updateCourseProgress,
+      submitAssignment,
+      getAssignmentSubmission,
+      gradeAssignment
     ]
   );
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { useAuth } from '@/app/components/AuthContext';
 import { useCourses } from '@/app/components/CoursesContext';
 import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
@@ -44,8 +45,41 @@ export function CourseCard({
   userProgress = 0,
 }: CourseCardProps) {
   const { isEnrolled: checkEnrolled } = useCourses();
+  const { isSignedIn, userRole } = useAuth(); // ADDED: Get userRole too
   const enrolled = isEnrolled || checkEnrolled(id);
   const hasImage = Boolean(image && image.trim());
+
+  // FIXED: Determine button text based on enrollment and progress
+  const getButtonText = () => {
+    if (!isSignedIn) {
+      return 'View Course'; // Always "View Course" for non-signed in users
+    }
+    
+    // Signed in but not enrolled
+    if (!enrolled) {
+      return 'View Course';
+    }
+    
+    // Signed in AND enrolled
+    if (userProgress === 100) {
+      return 'Learned';
+    } else if (userProgress > 0) {
+      return 'Continue Learning';
+    } else {
+      return 'Start Learning';
+    }
+  };
+
+  // FIXED: Determine button color - F59E0B for default view, 1E3A8A for enrolled students
+  const getButtonColor = () => {
+    // Non-signed in users OR signed-in but not enrolled
+    if (!isSignedIn || !enrolled) {
+      return 'bg-[#F59E0B] hover:bg-[#F59E0B]/90';
+    }
+    
+    // Signed in AND enrolled (must be a student)
+    return 'bg-[#1E3A8A] hover:bg-[#1E3A8A]/90';
+  };
 
   return (
     <Card className="overflow-hidden hover:shadow-xl transition-shadow duration-300 bg-white relative">
@@ -114,7 +148,7 @@ export function CourseCard({
           <Badge variant="outline" className="text-xs">{level}</Badge>
           {enrolled && (
             <Badge variant="secondary" className="text-xs bg-green-50 text-green-700 border-green-200">
-              Access Granted
+              {userProgress === 100 ? 'Completed' : 'In Progress'}
             </Badge>
           )}
         </div>
@@ -128,8 +162,8 @@ export function CourseCard({
 
       <CardFooter className="p-5 pt-0">
         <Link href={`/courses/${id}`} className="w-full">
-          <Button className={`w-full ${enrolled ? 'bg-[#1E3A8A] hover:bg-[#1E3A8A]/90' : 'bg-[#F59E0B] hover:bg-[#F59E0B]/90'} text-white`}>
-            {enrolled ? (userProgress > 0 ? 'Continue Learning' : 'Start Learning') : 'View Course'}
+          <Button className={`w-full ${getButtonColor()} text-white`}>
+            {getButtonText()}
           </Button>
         </Link>
       </CardFooter>

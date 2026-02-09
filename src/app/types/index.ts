@@ -7,6 +7,39 @@ export interface Category {
     icon: string;
 }
 
+// ===================== ASSIGNMENT TYPES =====================
+export interface AssignmentFile {
+    name: string;
+    type: string;
+    dataUrl: string;
+    size?: number;
+}
+
+export interface Assignment {
+    id: string;
+    title: string;
+    description: string;
+    dueDate?: string;
+    totalPoints: number;
+    files?: AssignmentFile[];
+    courseId?: string;
+}
+
+export interface AssignmentSubmission {
+    id: string;
+    assignmentId: string;
+    courseId: string;
+    userId: string;
+    studentName: string;
+    submittedAt: string;
+    fileUrl?: string;
+    text?: string;
+    grade?: number;
+    feedback?: string;
+    status: 'submitted' | 'graded';
+    attachments?: AssignmentFile[];
+}
+
 // ===================== COURSE TYPES =====================
 export interface Instructor {
     name: string;
@@ -63,6 +96,8 @@ export interface Course {
     enrollmentDate?: string;
     userProgress?: number; // 0-100%
     userCompletedLessons?: number;
+    // Add assignments
+    assignments?: Assignment[];
 }
 
 // ===================== ENROLLMENT TYPES =====================

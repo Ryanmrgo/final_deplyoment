@@ -16,14 +16,19 @@ interface UserProfile {
   graduationYear?: string;
   expertise?: string;
   experienceYears?: string;
+  enrolledCourses?: string[]; // ADDED: To match shared type
+  reviews?: string[]; // ADDED: To match shared type
 }
 
 interface AuthContextValue {
   userRole: UserRole;
   profile: UserProfile | null;
+  isLoaded: boolean;
+  isSignedIn: boolean;
   login: (role: Exclude<UserRole, null>, profile?: Partial<UserProfile>) => void;
   logout: () => void;
-  updateProfile: (updates: Partial<UserProfile>) => void;
+  updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
+  setRole: (role: Exclude<UserRole, null>) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -147,6 +152,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         graduationYear: nextProfile?.graduationYear ?? prev?.graduationYear,
         expertise: nextProfile?.expertise ?? prev?.expertise,
         experienceYears: nextProfile?.experienceYears ?? prev?.experienceYears,
+        enrolledCourses: nextProfile?.enrolledCourses ?? prev?.enrolledCourses ?? [], // ADDED
+        reviews: nextProfile?.reviews ?? prev?.reviews ?? [], // ADDED
       };
     });
   }, []);
@@ -156,7 +163,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setProfile(null);
   }, []);
 
-  const updateProfile = useCallback((updates: Partial<UserProfile>) => {
+  const updateProfile = useCallback(async (updates: Partial<UserProfile>) => {
     setProfile((prev) => {
       if (!prev) {
         // If there's no profile but we're trying to update, create a new one
@@ -173,6 +180,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           graduationYear: updates.graduationYear,
           expertise: updates.expertise,
           experienceYears: updates.experienceYears,
+          enrolledCourses: updates.enrolledCourses ?? [], // ADDED
+          reviews: updates.reviews ?? [], // ADDED
         };
       }
       // Preserve the existing id unless explicitly changed
@@ -181,9 +190,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const setRole = useCallback(async (role: Exclude<UserRole, null>) => {
+    setUserRole(role);
+    setProfile((prev) => (prev ? { ...prev, role } : null));
+  }, []);
+
   const value = useMemo<AuthContextValue>(
-    () => ({ userRole, profile, login, logout, updateProfile }),
-    [userRole, profile, login, logout, updateProfile]
+    () => ({
+      userRole,
+      profile,
+      isLoaded: true,
+      isSignedIn: !!userRole,
+      login,
+      logout,
+      updateProfile,
+      setRole,
+    }),
+    [userRole, profile, login, logout, updateProfile, setRole]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -10,7 +10,7 @@ import { Label } from '@/app/components/ui/label';
 import { Textarea } from '@/app/components/ui/textarea';
 import { categories } from '@/app/data/mockData';
 import { useAuth } from '@/app/components/AuthContext';
-import { useCourses, type Course, type SyllabusSection, type LessonAttachment } from '@/app/components/CoursesContext';
+import { useCourses, type Course, type SyllabusSection, type LessonAttachment, type Assignment } from '@/app/components/CoursesContext';
 
 export function CreateCourse() {
   const router = useRouter();
@@ -33,6 +33,7 @@ export function CreateCourse() {
     },
   ]);
   const [learningOutcomes, setLearningOutcomes] = useState<string[]>(['']);
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
 
   const categoryOptions = useMemo(() => categories, []);
 
@@ -81,6 +82,37 @@ export function CreateCourse() {
               };
             });
             return { ...section, lessons: updatedLessons };
+          })
+        );
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleAssignmentFiles = (files: FileList | null, assignmentIndex: number) => {
+    if (!files || files.length === 0) {
+      return;
+    }
+    Array.from(files).forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result !== 'string') {
+          return;
+        }
+        const attachment = {
+          name: file.name,
+          type: file.type || 'application/octet-stream',
+          dataUrl: reader.result,
+        };
+        setAssignments((prev) =>
+          prev.map((assignment, index) => {
+            if (index !== assignmentIndex) {
+              return assignment;
+            }
+            return {
+              ...assignment,
+              files: [...(assignment.files ?? []), attachment],
+            };
           })
         );
       };
@@ -144,6 +176,7 @@ export function CreateCourse() {
       image,
       syllabus: normalizedSyllabus,
       learningOutcomes: learningOutcomes.map((item) => item.trim()).filter(Boolean),
+      assignments: assignments.filter(a => a.title.trim().length > 0),
       reviews: [],
       isPublished,
     };
@@ -481,6 +514,163 @@ export function CreateCourse() {
                       >
                         Remove
                       </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label className="text-gray-900">Assignments</Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="border-[#1E3A8A] text-[#1E3A8A]"
+                    onClick={() =>
+                      setAssignments((prev) => [
+                        ...prev,
+                        {
+                          id: `${Date.now()}-${prev.length + 1}`,
+                          title: '',
+                          description: '',
+                          dueDate: '',
+                          totalPoints: 0,
+                        },
+                      ])
+                    }
+                  >
+                    Add Assignment
+                  </Button>
+                </div>
+                <div className="space-y-3">
+                  {assignments.map((assignment, index) => (
+                    <div key={assignment.id} className="border rounded-lg p-4 space-y-3 bg-gray-50">
+                      <div className="flex items-center justify-between mb-3">
+                        <Label className="text-sm font-semibold text-gray-900">Assignment {index + 1}</Label>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="border-red-300 text-red-600 hover:bg-red-50"
+                          onClick={() =>
+                            setAssignments((prev) => prev.filter((_, i) => i !== index))
+                          }
+                        >
+                          Remove
+                        </Button>
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-xs text-gray-700">Title</Label>
+                        <Input
+                          value={assignment.title}
+                          onChange={(e) =>
+                            setAssignments((prev) =>
+                              prev.map((item, i) =>
+                                i === index ? { ...item, title: e.target.value } : item
+                              )
+                            )
+                          }
+                          placeholder="e.g. Build a Todo App"
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-xs text-gray-700">Description</Label>
+                        <Textarea
+                          value={assignment.description}
+                          onChange={(e) =>
+                            setAssignments((prev) =>
+                              prev.map((item, i) =>
+                                i === index ? { ...item, description: e.target.value } : item
+                              )
+                            )
+                          }
+                          placeholder="Assignment details and requirements"
+                          rows={3}
+                        />
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label className="text-xs text-gray-700">Due Date</Label>
+                          <Input
+                            type="date"
+                            value={assignment.dueDate}
+                            onChange={(e) =>
+                              setAssignments((prev) =>
+                                prev.map((item, i) =>
+                                  i === index ? { ...item, dueDate: e.target.value } : item
+                                )
+                              )
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-xs text-gray-700">Total Points</Label>
+                          <Input
+                            type="number"
+                            value={assignment.totalPoints}
+                            onChange={(e) =>
+                              setAssignments((prev) =>
+                                prev.map((item, i) =>
+                                  i === index ? { ...item, totalPoints: parseInt(e.target.value) || 0 } : item
+                                )
+                              )
+                            }
+                            placeholder="100"
+                            min="0"
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-xs text-gray-700">Upload Files</Label>
+                        <div className="flex items-center gap-3">
+                          <input
+                            id={`assignment-files-${index}`}
+                            type="file"
+                            multiple
+                            onChange={(e) => handleAssignmentFiles(e.target.files, index)}
+                            className="hidden"
+                            accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.zip"
+                          />
+                          <label
+                            htmlFor={`assignment-files-${index}`}
+                            className="inline-flex items-center justify-center rounded-md border border-[#1E3A8A] px-3 py-2 text-sm text-[#1E3A8A] hover:bg-[#1E3A8A] hover:text-white"
+                          >
+                            Upload Files
+                          </label>
+                          <span className="text-xs text-gray-600">
+                            {assignment.files?.length ? `${assignment.files.length} files` : 'No files'}
+                          </span>
+                        </div>
+                        {assignment.files && assignment.files.length > 0 && (
+                          <div className="space-y-1 text-xs text-gray-600">
+                            {assignment.files.map((file, fileIndex) => (
+                              <div key={`${file.name}-${fileIndex}`} className="flex items-center justify-between gap-2">
+                                <span className="truncate">{file.name}</span>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  className="border-red-300 text-red-600 hover:bg-red-50 h-6 px-2"
+                                  onClick={() =>
+                                    setAssignments((prev) =>
+                                      prev.map((item, i) => {
+                                        if (i !== index) {
+                                          return item;
+                                        }
+                                        return {
+                                          ...item,
+                                          files: item.files?.filter((_, fIdx) => fIdx !== fileIndex),
+                                        };
+                                      })
+                                    )
+                                  }
+                                >
+                                  Remove
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
