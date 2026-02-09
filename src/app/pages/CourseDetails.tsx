@@ -1,15 +1,17 @@
 "use client";
 
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { Card, CardContent } from '@/app/components/ui/card';
-import { Button } from '@/app/components/ui/button';
-import { Badge } from '@/app/components/ui/badge';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/app/components/ui/accordion';
-import { Avatar, AvatarFallback } from '@/app/components/ui/avatar';
-import { Star, Users, Clock, Award, BookOpen, ChevronRight } from 'lucide-react';
 import { useAuth } from '@/app/components/AuthContext';
 import { useCourses } from '@/app/components/CoursesContext';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/app/components/ui/accordion';
+import { Avatar, AvatarFallback } from '@/app/components/ui/avatar';
+import { Badge } from '@/app/components/ui/badge';
+import { Button } from '@/app/components/ui/button';
+import { Card, CardContent } from '@/app/components/ui/card';
+import { Course } from '@/app/types/index'; // ADD THIS IMPORT
+import { Award, BookOpen, ChevronRight, Clock, Heart, Star, Users } from 'lucide-react'; // ADD Heart
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useState } from 'react'; // ADD THIS IMPORT
 
 interface CourseDetailsProps {
   id: string;
@@ -20,7 +22,10 @@ export function CourseDetails({ id }: CourseDetailsProps) {
   const { userRole } = useAuth();
   const { allCourses, publicCourses } = useCourses();
   const courseSource = userRole === 'teacher' ? allCourses : publicCourses;
-  const course = courseSource.find((c) => c.id === id);
+  const course = courseSource.find((c: Course) => c.id === id);
+  
+  // ADD THIS STATE
+  const [isSaved, setIsSaved] = useState(false);
 
   if (!course) {
     return (
@@ -82,7 +87,7 @@ export function CourseDetails({ id }: CourseDetailsProps) {
           {/* Left Column - Course Content */}
           <div className="lg:col-span-2 space-y-8">
             {/* Course Overview */}
-            {course.learningOutcomes && course.learningOutcomes.length > 0 ? (
+            {course.learningOutcomes?.length ? (
               <Card className="bg-white">
                 <CardContent className="p-6">
                   <h2 className="text-2xl font-bold mb-4 text-gray-900">What You'll Learn</h2>
@@ -225,13 +230,30 @@ export function CourseDetails({ id }: CourseDetailsProps) {
                   className="w-full bg-[#F59E0B] hover:bg-[#F59E0B]/90 text-white py-6 text-lg mb-4"
                   onClick={() => {
                     if (!userRole) {
-                      router.push('/login');
+                      router.push(`/login?redirect=/courses/${id}`);
                       return;
                     }
-                    router.push('/dashboard/student');
+                    
+                    if (userRole === 'student') {
+                      // TODO: Add enrollment API call here
+                      router.push('/dashboard/student');
+                    } else {
+                      alert('Switch to student account to enroll in courses');
+                      // Or: router.push('/profile?switchRole=student');
+                    }
                   }}
                 >
                   Enroll Now - It's Free!
+                </Button>
+
+                {/* WISHLIST BUTTON */}
+                <Button
+                  variant="outline"
+                  className="w-full border-[#1E3A8A] text-[#1E3A8A] hover:bg-[#1E3A8A] hover:text-white mb-4"
+                  onClick={() => setIsSaved(!isSaved)}
+                >
+                  <Heart className={`w-4 h-4 mr-2 ${isSaved ? 'fill-red-500 text-red-500' : ''}`} />
+                  {isSaved ? 'Saved to Wishlist' : 'Save for Later'}
                 </Button>
 
                 <div className="space-y-4 pt-4 border-t">

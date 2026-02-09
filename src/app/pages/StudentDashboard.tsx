@@ -1,13 +1,14 @@
 "use client";
 
-import Link from 'next/link';
+import { useAuth } from '@/app/components/AuthContext';
+import { Badge } from '@/app/components/ui/badge';
+import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { Progress } from '@/app/components/ui/progress';
-import { Button } from '@/app/components/ui/button';
-import { Badge } from '@/app/components/ui/badge';
-import { BookOpen, Award, Clock, TrendingUp } from 'lucide-react';
-import { courses, enrolledCourses, achievements, stats } from '@/app/data/mockData';
-import { useAuth } from '@/app/components/AuthContext';
+import { achievements, courses, enrolledCourses, stats } from '@/app/data/mockData';
+import { EnrolledCourse } from '@/app/types'; // ADD THIS IMPORT
+import { Award, BookOpen, Clock, TrendingUp } from 'lucide-react';
+import Link from 'next/link';
 
 export function StudentDashboard() {
   const { userRole } = useAuth();
@@ -25,10 +26,10 @@ export function StudentDashboard() {
     );
   }
 
-  const myEnrolledCourses = enrolledCourses.map((enrolled) => {
+  const myEnrolledCourses: EnrolledCourse[] = enrolledCourses.map((enrolled) => {
     const course = courses.find((c) => c.id === enrolled.courseId);
-    return { ...course, ...enrolled };
-  });
+    return { ...course!, ...enrolled }; // Using ! because we know it exists
+  }).filter((course): course is EnrolledCourse => course !== undefined);
 
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
@@ -99,7 +100,7 @@ export function StudentDashboard() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {myEnrolledCourses.map((course: any) => (
+                  {myEnrolledCourses.map((course: EnrolledCourse) => (
                     <div key={course.id} className="border rounded-lg p-4 hover:shadow-md transition">
                       <div className="flex items-start gap-4">
                         <img

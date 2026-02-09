@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
 import { CourseCard } from '@/app/components/CourseCard';
-import { Input } from '@/app/components/ui/input';
-import { Button } from '@/app/components/ui/button';
-import { Badge } from '@/app/components/ui/badge';
-import { Search, Filter } from 'lucide-react';
-import { categories } from '@/app/data/mockData';
 import { useCourses } from '@/app/components/CoursesContext';
+import { Badge } from '@/app/components/ui/badge';
+import { Button } from '@/app/components/ui/button';
+import { Input } from '@/app/components/ui/input';
+import { categories } from '@/app/data/mockData';
+import { Category, Course } from '@/app/types/index';
+import { Filter, Search } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
+import { useEffect, useState } from 'react';
 
 export function Courses() {
   const { publicCourses } = useCourses();
@@ -16,7 +17,7 @@ export function Courses() {
   const categoryFromUrl = searchParams.get('category');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(categoryFromUrl);
-  const [filteredCourses, setFilteredCourses] = useState(publicCourses);
+  const [filteredCourses, setFilteredCourses] = useState<Course[]>(publicCourses);
 
   useEffect(() => {
     setSelectedCategory(categoryFromUrl);
@@ -27,13 +28,13 @@ export function Courses() {
 
     // Filter by category
     if (selectedCategory) {
-      result = result.filter((course) => course.categoryId === selectedCategory);
+      result = result.filter((course: Course) => course.categoryId === selectedCategory);
     }
 
     // Filter by search query
     if (searchQuery) {
       result = result.filter(
-        (course) =>
+        (course: Course) =>
           course.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
           course.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
           course.category.toLowerCase().includes(searchQuery.toLowerCase())
@@ -87,7 +88,7 @@ export function Courses() {
             >
               All Categories
             </Button>
-            {categories.map((category) => (
+            {categories.map((category: Category) => (
               <Button
                 key={category.id}
                 variant={selectedCategory === category.id ? 'default' : 'outline'}
@@ -115,7 +116,7 @@ export function Courses() {
                 {' '}
                 in{' '}
                 <Badge className="bg-[#1E3A8A]">
-                  {categories.find((c) => c.id === selectedCategory)?.name}
+                  {categories.find((c: Category) => c.id === selectedCategory)?.name}
                 </Badge>
               </span>
             )}
@@ -125,7 +126,7 @@ export function Courses() {
         {/* Course Grid */}
         {filteredCourses.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {filteredCourses.map((course) => (
+            {filteredCourses.map((course: Course) => (
               <CourseCard key={course.id} {...course} />
             ))}
           </div>

@@ -27,26 +27,73 @@ export const courses = [
     level: 'Beginner',
     duration: '12 weeks',
     image: 'https://images.unsplash.com/photo-1498050108023-c5249f4df085?w=800&h=450',
+    learningOutcomes: [
+      'Build responsive websites from scratch',
+      'Create full-stack web applications',
+      'Master React for frontend development',
+      'Deploy applications to production',
+      'Work with databases and APIs'
+    ],
     syllabus: [
       {
         id: '1',
         title: 'Introduction to Web Development',
-        lessons: ['What is Web Development?', 'Setting up your environment', 'Basic HTML structure'],
+        lessons: [
+          { title: 'What is Web Development?' },
+          { title: 'Setting up your environment' },
+          { 
+            title: 'Basic HTML structure',
+            files: [
+              { name: 'HTML Basics.pdf', dataUrl: '#' },
+              { name: 'Code Examples.zip', dataUrl: '#' }
+            ]
+          },
+        ],
       },
       {
         id: '2',
         title: 'HTML & CSS Fundamentals',
-        lessons: ['HTML elements and attributes', 'CSS styling basics', 'Responsive design principles'],
+        lessons: [
+          { title: 'HTML elements and attributes' },
+          { title: 'CSS styling basics' },
+          { 
+            title: 'Responsive design principles',
+            files: [
+              { name: 'CSS Grid Guide.pdf', dataUrl: '#' },
+              { name: 'Responsive Examples.zip', dataUrl: '#' }
+            ]
+          },
+        ],
       },
       {
         id: '3',
         title: 'JavaScript Essentials',
-        lessons: ['Variables and data types', 'Functions and scope', 'DOM manipulation'],
+        lessons: [
+          { title: 'Variables and data types' },
+          { title: 'Functions and scope' },
+          { 
+            title: 'DOM manipulation',
+            files: [
+              { name: 'JavaScript Basics.pdf', dataUrl: '#' },
+              { name: 'DOM Examples.zip', dataUrl: '#' }
+            ]
+          },
+        ],
       },
       {
         id: '4',
         title: 'React Development',
-        lessons: ['Components and props', 'State management', 'Building real applications'],
+        lessons: [
+          { title: 'Components and props' },
+          { title: 'State management' },
+          { 
+            title: 'Building real applications',
+            files: [
+              { name: 'React Guide.pdf', dataUrl: '#' },
+              { name: 'Project Starter.zip', dataUrl: '#' }
+            ]
+          },
+        ],
       },
     ],
     reviews: [
@@ -71,21 +118,57 @@ export const courses = [
     level: 'Intermediate',
     duration: '10 weeks',
     image: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800&h=450',
+    learningOutcomes: [
+      'Analyze and visualize data using Python',
+      'Build machine learning models',
+      'Clean and preprocess real-world datasets',
+      'Create data-driven dashboards'
+    ],
     syllabus: [
       {
         id: '1',
         title: 'Python Basics for Data Science',
-        lessons: ['Python fundamentals', 'Data structures', 'Working with files'],
+        lessons: [
+          { title: 'Python fundamentals' },
+          { title: 'Data structures' },
+          { 
+            title: 'Working with files',
+            files: [
+              { name: 'Python Basics.pdf', dataUrl: '#' },
+              { name: 'Data Structures Examples.zip', dataUrl: '#' }
+            ]
+          },
+        ],
       },
       {
         id: '2',
         title: 'Data Analysis with Pandas',
-        lessons: ['DataFrames and Series', 'Data cleaning', 'Data transformation'],
+        lessons: [
+          { title: 'DataFrames and Series' },
+          { title: 'Data cleaning' },
+          { 
+            title: 'Data transformation',
+            files: [
+              { name: 'Pandas Guide.pdf', dataUrl: '#' },
+              { name: 'Data Analysis Examples.zip', dataUrl: '#' }
+            ]
+          },
+        ],
       },
       {
         id: '3',
         title: 'Data Visualization',
-        lessons: ['Matplotlib basics', 'Seaborn for statistical plots', 'Creating dashboards'],
+        lessons: [
+          { title: 'Matplotlib basics' },
+          { title: 'Seaborn for statistical plots' },
+          { 
+            title: 'Creating dashboards',
+            files: [
+              { name: 'Visualization Guide.pdf', dataUrl: '#' },
+              { name: 'Dashboard Templates.zip', dataUrl: '#' }
+            ]
+          },
+        ],
       },
     ],
     reviews: [
@@ -109,16 +192,42 @@ export const courses = [
     level: 'Intermediate',
     duration: '8 weeks',
     image: 'https://images.unsplash.com/photo-1512941937669-90a1b58e7e9c?w=800&h=450',
+    learningOutcomes: [
+      'Build cross-platform mobile apps',
+      'Master React Native components',
+      'Implement navigation and state management',
+      'Publish apps to app stores'
+    ],
     syllabus: [
       {
         id: '1',
         title: 'Getting Started with React Native',
-        lessons: ['Setting up development environment', 'React Native basics', 'Understanding components'],
+        lessons: [
+          { title: 'Setting up development environment' },
+          { title: 'React Native basics' },
+          { 
+            title: 'Understanding components',
+            files: [
+              { name: 'React Native Setup.pdf', dataUrl: '#' },
+              { name: 'Component Examples.zip', dataUrl: '#' }
+            ]
+          },
+        ],
       },
       {
         id: '2',
         title: 'Building UI Components',
-        lessons: ['Styling in React Native', 'Navigation', 'Forms and user input'],
+        lessons: [
+          { title: 'Styling in React Native' },
+          { title: 'Navigation' },
+          { 
+            title: 'Forms and user input',
+            files: [
+              { name: 'UI Components Guide.pdf', dataUrl: '#' },
+              { name: 'Form Examples.zip', dataUrl: '#' }
+            ]
+          },
+        ],
       },
     ],
     reviews: [],
@@ -140,16 +249,42 @@ export const courses = [
     level: 'Beginner',
     duration: '6 weeks',
     image: 'https://images.unsplash.com/photo-1561070791-2526d30994b5?w=800&h=450',
+    learningOutcomes: [
+      'Design user-friendly interfaces',
+      'Create wireframes and prototypes',
+      'Conduct user research and testing',
+      'Master Figma design tool'
+    ],
     syllabus: [
       {
         id: '1',
         title: 'Introduction to UI/UX',
-        lessons: ['What is UI/UX?', 'Design thinking process', 'User research methods'],
+        lessons: [
+          { title: 'What is UI/UX?' },
+          { title: 'Design thinking process' },
+          { 
+            title: 'User research methods',
+            files: [
+              { name: 'UI/UX Basics.pdf', dataUrl: '#' },
+              { name: 'Research Templates.zip', dataUrl: '#' }
+            ]
+          },
+        ],
       },
       {
         id: '2',
         title: 'Design Principles',
-        lessons: ['Color theory', 'Typography', 'Layout and composition'],
+        lessons: [
+          { title: 'Color theory' },
+          { title: 'Typography' },
+          { 
+            title: 'Layout and composition',
+            files: [
+              { name: 'Design Principles.pdf', dataUrl: '#' },
+              { name: 'Figma Templates.zip', dataUrl: '#' }
+            ]
+          },
+        ],
       },
     ],
     reviews: [
@@ -173,16 +308,42 @@ export const courses = [
     level: 'Beginner',
     duration: '5 weeks',
     image: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=800&h=450',
+    learningOutcomes: [
+      'Develop effective marketing strategies',
+      'Optimize websites for search engines',
+      'Create engaging social media content',
+      'Analyze marketing campaign performance'
+    ],
     syllabus: [
       {
         id: '1',
         title: 'Introduction to Digital Marketing',
-        lessons: ['Digital marketing landscape', 'Setting goals', 'Understanding your audience'],
+        lessons: [
+          { title: 'Digital marketing landscape' },
+          { title: 'Setting goals' },
+          { 
+            title: 'Understanding your audience',
+            files: [
+              { name: 'Marketing Basics.pdf', dataUrl: '#' },
+              { name: 'Audience Analysis Templates.zip', dataUrl: '#' }
+            ]
+          },
+        ],
       },
       {
         id: '2',
         title: 'SEO Fundamentals',
-        lessons: ['How search engines work', 'Keyword research', 'On-page optimization'],
+        lessons: [
+          { title: 'How search engines work' },
+          { title: 'Keyword research' },
+          { 
+            title: 'On-page optimization',
+            files: [
+              { name: 'SEO Guide.pdf', dataUrl: '#' },
+              { name: 'SEO Tools List.zip', dataUrl: '#' }
+            ]
+          },
+        ],
       },
     ],
     reviews: [],
@@ -204,16 +365,42 @@ export const courses = [
     level: 'Beginner',
     duration: '16 weeks',
     image: 'https://images.unsplash.com/photo-1434030216411-0b793f4b4173?w=800&h=450',
+    learningOutcomes: [
+      'Hold basic conversations in Spanish',
+      'Understand Spanish grammar fundamentals',
+      'Read and write simple Spanish texts',
+      'Navigate real-life situations in Spanish'
+    ],
     syllabus: [
       {
         id: '1',
         title: 'Spanish Basics',
-        lessons: ['Greetings and introductions', 'Pronunciation guide', 'Basic grammar'],
+        lessons: [
+          { title: 'Greetings and introductions' },
+          { title: 'Pronunciation guide' },
+          { 
+            title: 'Basic grammar',
+            files: [
+              { name: 'Spanish Basics.pdf', dataUrl: '#' },
+              { name: 'Pronunciation Audio.zip', dataUrl: '#' }
+            ]
+          },
+        ],
       },
       {
         id: '2',
         title: 'Everyday Conversations',
-        lessons: ['At the restaurant', 'Shopping', 'Asking for directions'],
+        lessons: [
+          { title: 'At the restaurant' },
+          { title: 'Shopping' },
+          { 
+            title: 'Asking for directions',
+            files: [
+              { name: 'Conversation Guide.pdf', dataUrl: '#' },
+              { name: 'Practice Dialogues.zip', dataUrl: '#' }
+            ]
+          },
+        ],
       },
     ],
     reviews: [
@@ -222,6 +409,7 @@ export const courses = [
   },
 ];
 
+// The rest of the file remains the same...
 export const enrolledCourses = [
   {
     courseId: '1',

@@ -1,14 +1,15 @@
 "use client";
 
-import { useState } from 'react';
-import Link from 'next/link';
-import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card';
+import { useAuth } from '@/app/components/AuthContext';
+import { Avatar, AvatarFallback, AvatarImage } from '@/app/components/ui/avatar';
 import { Button } from '@/app/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
 import { Textarea } from '@/app/components/ui/textarea';
-import { Avatar, AvatarFallback, AvatarImage } from '@/app/components/ui/avatar';
-import { useAuth } from '@/app/components/AuthContext';
+import { UserProfile } from '@/app/types/index';
+import Link from 'next/link';
+import { useState } from 'react';
 
 function getInitials(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -29,7 +30,9 @@ export function Profile() {
   const [avatarName, setAvatarName] = useState('');
   const [bio, setBio] = useState(profile?.bio ?? '');
   const [professionalism, setProfessionalism] = useState(profile?.professionalism ?? '');
-  const [rating, setRating] = useState(profile?.rating?.toString() ?? '');
+  const [rating, setRating] = useState(
+    profile?.rating !== undefined ? profile.rating.toString() : ''
+  );
   const [graduationYear, setGraduationYear] = useState(profile?.graduationYear ?? '');
   const [expertise, setExpertise] = useState(profile?.expertise ?? '');
   const [experienceYears, setExperienceYears] = useState(profile?.experienceYears ?? '');
@@ -54,7 +57,7 @@ export function Profile() {
     setAvatarName('');
     setBio(profile?.bio ?? '');
     setProfessionalism(profile?.professionalism ?? '');
-    setRating(profile?.rating?.toString() ?? '');
+    setRating(profile?.rating !== undefined ? profile.rating.toString() : '');
     setGraduationYear(profile?.graduationYear ?? '');
     setExpertise(profile?.expertise ?? '');
     setExperienceYears(profile?.experienceYears ?? '');
@@ -90,17 +93,24 @@ export function Profile() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    updateProfile({
+    
+    const updatedProfile: Partial<UserProfile> = {
       name,
       email,
       avatar,
       bio,
       professionalism,
-      rating: rating ? Number(rating) : undefined,
       graduationYear,
       expertise,
       experienceYears,
-    });
+    };
+    
+    // Only add rating if it's a valid number
+    if (rating && !isNaN(Number(rating))) {
+      updatedProfile.rating = Number(rating);
+    }
+    
+    updateProfile(updatedProfile);
     setIsEditing(false);
     setAvatarName('');
   };
