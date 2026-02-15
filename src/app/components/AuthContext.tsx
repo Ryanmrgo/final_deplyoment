@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useMemo, useEffect, useState } from 'react';
 import { useUser } from '@clerk/nextjs';
 
-type UserRole = 'student' | 'teacher' | null;
+type UserRole = 'student' | 'teacher' | 'admin' | null;
 
 interface User {
   id: string;
@@ -27,8 +27,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (isLoaded && clerkUser) {
-      // Check publicMetadata first, then unsafeMetadata; allow null to trigger onboarding
-      const role = (clerkUser.publicMetadata?.role || clerkUser.unsafeMetadata?.role) as UserRole | undefined;
+      let role = (clerkUser.publicMetadata?.role || clerkUser.unsafeMetadata?.role) as UserRole | undefined;
       setUser({
         id: clerkUser.id,
         email: clerkUser.emailAddresses[0]?.emailAddress || '',
@@ -36,6 +35,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         role: role ?? null,
       });
       setUserRole(role ?? null);
+
+      // Fallback: fetch role from MongoDB if not in Clerk (session can be stale after sign-in)
+      if (!role) {
+        fetch('/api/user/profile')
+          .then((res) => res.ok ? res.json() : null)
+          .then((data) => {
+            if (data?.role && ['teacher', 'student', 'admin'].includes(data.role)) {
+              setUserRole(data.role as UserRole);
+              setUser((prev) => prev ? { ...prev, role: data.role } : null);
+            }
+          })
+          .catch(() => {});
+      }
     } else if (isLoaded && !clerkUser) {
       setUser(null);
       setUserRole(null);

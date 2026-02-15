@@ -8,7 +8,7 @@ const userSchema = new mongoose.Schema(
     email: { type: String, required: true, unique: true },
     name: { type: String, required: true },
     imageUrl: { type: String, default: '' },
-    role: { type: String, enum: ['teacher', 'student'], default: 'student' },
+    role: { type: String, enum: ['teacher', 'student', 'admin'], default: 'student' },
     bio: { type: String, default: '' },
     headline: { type: String, default: '' },
     createdAt: { type: Date, default: Date.now },

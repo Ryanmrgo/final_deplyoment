@@ -8,48 +8,60 @@ const isAdminRoute = createRouteMatcher(['/dashboard/admin(.*)']);
 const isEnrollmentRoute = createRouteMatcher(['/api/enrollment(.*)']);
 const isTeacherApiRoute = createRouteMatcher(['/api/teacher(.*)']);
 const isStudentApiRoute = createRouteMatcher(['/api/student(.*)']);
+const isAdminApiRoute = createRouteMatcher(['/api/admin(.*)']);
 const isWebhookRoute = createRouteMatcher(['/api/webhooks/(.*)']);
 
-export default clerkMiddleware((auth, req) => {
+export default clerkMiddleware(async (auth, req) => {
   if (isWebhookRoute(req)) {
     return NextResponse.next();
   }
 
-  if (isDashboardRoute(req) || isEnrollmentRoute(req) || isTeacherApiRoute(req) || isStudentApiRoute(req)) {
-    const { userId, sessionClaims } = auth() as any;
+  if (isDashboardRoute(req) || isEnrollmentRoute(req) || isTeacherApiRoute(req) || isStudentApiRoute(req) || isAdminApiRoute(req)) {
+    const { userId, sessionClaims } = await auth();
 
     if (!userId) {
       return NextResponse.redirect(new URL('/auth/sign-in', req.url));
     }
 
-    const role = (sessionClaims?.publicMetadata as any)?.role as string | undefined;
+    let role = (sessionClaims?.publicMetadata as any)?.role as string | undefined;
 
-    if (!role && !req.nextUrl.pathname.startsWith('/dashboard/onboarding')) {
-      return NextResponse.redirect(new URL('/dashboard/onboarding', req.url));
+    // When role is missing in session, allow dashboard routes through - dashboard page will check MongoDB
+    if (!role) {
+      const path = req.nextUrl.pathname;
+      const allowWithoutRole = path === '/dashboard' || path.startsWith('/dashboard/onboarding') || path.startsWith('/dashboard/teacher') || path.startsWith('/dashboard/student') || path.startsWith('/dashboard/admin');
+      if (!allowWithoutRole && path.startsWith('/dashboard')) {
+        return NextResponse.redirect(new URL('/dashboard/onboarding', req.url));
+      }
     }
 
-    if (isTeacherRoute(req) && role !== 'teacher') {
+    if (isTeacherRoute(req) && role && role !== 'teacher') {
       return NextResponse.redirect(new URL(`/dashboard/${role ?? 'student'}`, req.url));
     }
 
-    if (isStudentRoute(req) && role !== 'student') {
+    if (isStudentRoute(req) && role && role !== 'student') {
       return NextResponse.redirect(new URL(`/dashboard/${role ?? 'student'}`, req.url));
     }
 
-    if (isAdminRoute(req) && role !== 'admin') {
+    if (isAdminRoute(req) && role && role !== 'admin') {
       return NextResponse.redirect(new URL(`/dashboard/${role ?? 'student'}`, req.url));
     }
 
-    if (isEnrollmentRoute(req) && role !== 'student') {
+    if (isEnrollmentRoute(req) && (!role || role !== 'student')) {
       return NextResponse.json({ error: 'Student role required' }, { status: 403 });
     }
 
-    if (isTeacherApiRoute(req) && role !== 'teacher') {
+    // When role is missing from session (e.g. after onboarding, claims not yet refreshed),
+    // allow through so API routes can verify role from MongoDB via getEffectiveRole.
+    if (isTeacherApiRoute(req) && role != null && role !== 'teacher') {
       return NextResponse.json({ error: 'Teacher role required' }, { status: 403 });
     }
 
-    if (isStudentApiRoute(req) && role !== 'student') {
+    if (isStudentApiRoute(req) && role != null && role !== 'student') {
       return NextResponse.json({ error: 'Student role required' }, { status: 403 });
+    }
+
+    if (isAdminApiRoute(req) && role != null && role !== 'admin') {
+      return NextResponse.json({ error: 'Admin role required' }, { status: 403 });
     }
   }
 

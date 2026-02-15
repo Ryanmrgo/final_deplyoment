@@ -1,16 +1,14 @@
-import { auth } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
 import connectDB from '@/config/db';
 import Course from '@/models/Course';
+import { getEffectiveRole } from '@/lib/auth';
 
 export async function GET() {
-  const { userId, sessionClaims } = await auth();
+  const { userId, role } = await getEffectiveRole();
 
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-
-  const role = (sessionClaims?.publicMetadata as any)?.role as string | undefined;
 
   if (role !== 'teacher') {
     return NextResponse.json({ error: 'Teacher role required' }, { status: 403 });
@@ -27,13 +25,11 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const { userId, sessionClaims } = await auth();
+  const { userId, role } = await getEffectiveRole();
 
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-
-  const role = (sessionClaims?.publicMetadata as any)?.role as string | undefined;
 
   if (role !== 'teacher') {
     return NextResponse.json({ error: 'Teacher role required' }, { status: 403 });
@@ -56,6 +52,7 @@ export async function POST(req: Request) {
       duration: body.duration || 0,
       image: body.image || '',
       price: body.price || 0,
+      status: body.status || 'Draft', // Draft = hidden from students (Moodle style); teacher publishes when ready
     });
     await course.save();
     return NextResponse.json({ success: true, course });

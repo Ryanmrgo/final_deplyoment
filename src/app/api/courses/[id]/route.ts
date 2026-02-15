@@ -25,23 +25,39 @@ export async function GET(
       return NextResponse.json({ error: 'Course not found' }, { status: 404 });
     }
 
+    let userId: string | null = null;
+    try {
+      const authResult = await auth();
+      userId = authResult.userId ?? null;
+    } catch {
+      // not authenticated
+    }
+
+    // Moodle-like: Draft courses are hidden from students; only instructor can view
+    const courseStatus = (course as any).status || 'Draft';
+    const isInstructor = !!(userId && userId === (course as any).instructor);
+    if (courseStatus === 'Draft' && !isInstructor) {
+      return NextResponse.json({ error: 'Course not found' }, { status: 404 });
+    }
+
     // Get instructor name
     const instructor = await User.findById(course.instructor).lean();
     const instructorName = instructor?.name || 'Instructor';
 
     // Check if current user is enrolled (if authenticated)
     let isEnrolled = false;
-    try {
-      const { userId } = await auth();
-      if (userId) {
-        const enrollment = await Enrollment.findOne({
-          studentId: userId,
-          courseId: id,
-        });
-        isEnrolled = !!enrollment;
+    let enrollmentId = null;
+    let enrollmentProgress = 0;
+    if (userId) {
+      const enrollment = await Enrollment.findOne({
+        studentId: userId,
+        courseId: id,
+      }).lean();
+      if (enrollment) {
+        isEnrolled = true;
+        enrollmentId = (enrollment as any)._id?.toString();
+        enrollmentProgress = (enrollment as any).progress ?? 0;
       }
-    } catch {
-      // User not authenticated
     }
 
     const result = {
@@ -49,6 +65,7 @@ export async function GET(
       title: course.title,
       description: course.description,
       category: course.category,
+      status: courseStatus,
       instructor: {
         name: instructorName,
         avatar: '👩‍🏫',
@@ -69,6 +86,9 @@ export async function GET(
         date: r.createdAt ? new Date(r.createdAt).toISOString().split('T')[0] : '',
       })),
       isEnrolled,
+      enrollmentId,
+      enrollmentProgress,
+      isInstructor,
     };
 
     return NextResponse.json(result);
