@@ -6,19 +6,30 @@ import { Badge } from '@/app/components/ui/badge';
 import { Plus, Users, BookOpen, Star, TrendingUp, Edit, Eye } from 'lucide-react';
 import { teacherCourses, stats } from '@/app/data/mockData';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useEffect } from 'react';
 import { useAuth } from '@/app/components/AuthContext';
 
 export function TeacherDashboard() {
-  const { userRole } = useAuth();
-  if (userRole !== 'teacher') {
+  const { user, userRole, isLoading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!isLoading && !user) {
+      router.push('/auth/sign-in');
+    } else if (!isLoading && user && !userRole) {
+      router.push('/dashboard/onboarding');
+    } else if (!isLoading && user && userRole !== 'teacher') {
+      router.push(`/dashboard/${userRole}`);
+    }
+  }, [user, userRole, isLoading, router]);
+
+  if (isLoading || !user || userRole !== 'teacher') {
     return (
       <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center">
         <div className="text-center">
-          <h2 className="text-2xl font-bold mb-4">Teacher access only</h2>
-          <p className="text-gray-600 mb-6">Please sign in as a teacher to view this dashboard.</p>
-          <Link href="/login">
-            <Button className="bg-[#F59E0B] hover:bg-[#F59E0B]/90 text-white">Go to Login</Button>
-          </Link>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading...</p>
         </div>
       </div>
     );

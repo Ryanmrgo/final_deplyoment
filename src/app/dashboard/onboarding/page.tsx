@@ -1,0 +1,123 @@
+"use client";
+
+import { useState } from 'react';
+import { useSession, useUser } from '@clerk/nextjs';
+import { useRouter } from 'next/navigation';
+
+export default function OnboardingPage() {
+  const { user, isLoaded } = useUser();
+  const { session } = useSession();
+  const router = useRouter();
+  const [selected, setSelected] = useState<'teacher' | 'student' | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleRoleSelect = async (role: 'teacher' | 'student') => {
+    if (!user) return;
+
+    setLoading(true);
+    try {
+      // Update user's role via API
+      const response = await fetch('/api/user/update-role', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ role }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update role');
+      }
+
+      await user.reload();
+      await session?.reload();
+
+      // Redirect to appropriate dashboard after claims refresh
+      router.replace(`/dashboard/${role}`);
+      router.refresh();
+    } catch (error) {
+      console.error('Error setting role:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!isLoaded) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-slate-600">Loading...</p>
+      </div>
+    );
+  }
+
+  if (!user) {
+    router.push('/auth/sign-in');
+    return null;
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center px-4 py-12">
+      <div className="max-w-2xl w-full">
+        <div className="bg-white rounded-lg shadow-lg p-8 md:p-12">
+          <h1 className="text-3xl md:text-4xl font-bold text-slate-900 mb-2">
+            Welcome to AlinHub!
+          </h1>
+          <p className="text-slate-600 mb-8">
+            {user.firstName}, let's get started. What's your role?
+          </p>
+
+          <div className="grid md:grid-cols-2 gap-6">
+            {/* Student Card */}
+            <button
+              onClick={() => {
+                setSelected('student');
+                handleRoleSelect('student');
+              }}
+              disabled={loading}
+              className={`relative overflow-hidden rounded-lg p-8 text-left transition-all duration-300 ${
+                selected === 'student'
+                  ? 'ring-2 ring-blue-500 shadow-lg scale-105'
+                  : 'border-2 border-slate-200 hover:border-blue-300'
+              } ${loading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+            >
+              <div className="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
+              <div className="text-4xl mb-4">🎓</div>
+              <h2 className="text-2xl font-bold text-slate-900 mb-2">Student</h2>
+              <p className="text-slate-600">
+                Learn from expert instructors and advance your skills
+              </p>
+            </button>
+
+            {/* Teacher Card */}
+            <button
+              onClick={() => {
+                setSelected('teacher');
+                handleRoleSelect('teacher');
+              }}
+              disabled={loading}
+              className={`relative overflow-hidden rounded-lg p-8 text-left transition-all duration-300 ${
+                selected === 'teacher'
+                  ? 'ring-2 ring-orange-500 shadow-lg scale-105'
+                  : 'border-2 border-slate-200 hover:border-orange-300'
+              } ${loading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+            >
+              <div className="absolute top-0 left-0 w-1 h-full bg-orange-500"></div>
+              <div className="text-4xl mb-4">👨‍🏫</div>
+              <h2 className="text-2xl font-bold text-slate-900 mb-2">Teacher</h2>
+              <p className="text-slate-600">
+                Create courses and teach students around the world
+              </p>
+            </button>
+          </div>
+
+          {loading && (
+            <div className="mt-8 flex items-center justify-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+              <p className="ml-3 text-slate-600">Setting up your account...</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,79 @@
+import { NextResponse } from 'next/server';
+import connectDB from '@/config/db';
+import Course from '@/models/Course';
+import User from '@/models/User';
+import Enrollment from '@/models/Enrollment';
+import { auth } from '@clerk/nextjs/server';
+
+// Public route - fetch single course by ID
+export async function GET(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    await connectDB();
+
+    const { id } = await params;
+
+    if (!id) {
+      return NextResponse.json({ error: 'Course ID required' }, { status: 400 });
+    }
+
+    const course = await Course.findById(id).lean();
+
+    if (!course) {
+      return NextResponse.json({ error: 'Course not found' }, { status: 404 });
+    }
+
+    // Get instructor name
+    const instructor = await User.findById(course.instructor).lean();
+    const instructorName = instructor?.name || 'Instructor';
+
+    // Check if current user is enrolled (if authenticated)
+    let isEnrolled = false;
+    try {
+      const { userId } = await auth();
+      if (userId) {
+        const enrollment = await Enrollment.findOne({
+          studentId: userId,
+          courseId: id,
+        });
+        isEnrolled = !!enrollment;
+      }
+    } catch {
+      // User not authenticated
+    }
+
+    const result = {
+      id: course._id.toString(),
+      title: course.title,
+      description: course.description,
+      category: course.category,
+      instructor: {
+        name: instructorName,
+        avatar: '👩‍🏫',
+        bio: instructor?.headline || instructor?.bio || 'Expert instructor',
+      },
+      rating: course.rating || 0,
+      reviewCount: course.reviews?.length || 0,
+      students: course.totalStudents || 0,
+      level: course.level || 'Beginner',
+      duration: course.duration ? `${course.duration}h` : '0h',
+      image: course.image || 'https://images.unsplash.com/photo-1498050108023-c5249f4df085?w=800&h=450',
+      syllabus: (course as any).syllabus || [],
+      reviews: (course.reviews || []).map((r: any) => ({
+        id: r._id?.toString() || r.studentId,
+        student: 'Student',
+        rating: r.rating,
+        comment: r.comment,
+        date: r.createdAt ? new Date(r.createdAt).toISOString().split('T')[0] : '',
+      })),
+      isEnrolled,
+    };
+
+    return NextResponse.json(result);
+  } catch (error) {
+    console.error('Error fetching course:', error);
+    return NextResponse.json({ error: 'Failed to fetch course' }, { status: 500 });
+  }
+}

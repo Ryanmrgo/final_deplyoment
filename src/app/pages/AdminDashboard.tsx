@@ -7,24 +7,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/ta
 import { Users, BookOpen, TrendingUp, UserCheck, Edit, Trash2, Eye, CheckCircle, XCircle } from 'lucide-react';
 import { stats, courses } from '@/app/data/mockData';
 import Link from 'next/link';
-import { useAuth } from '@/app/components/AuthContext';
 
 export function AdminDashboard() {
-  const { userRole } = useAuth();
-  if (userRole !== 'admin') {
-    return (
-      <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold mb-4">Admin access only</h2>
-          <p className="text-gray-600 mb-6">Please sign in as an admin to view this dashboard.</p>
-          <Link href="/login">
-            <Button className="bg-[#F59E0B] hover:bg-[#F59E0B]/90 text-white">Go to Login</Button>
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
   const recentUsers = [
     { id: '1', name: 'Ahmed Ali', email: 'ahmed@example.com', role: 'Student', status: 'Active', joined: '2026-01-14' },
     { id: '2', name: 'Fatima Hassan', email: 'fatima@example.com', role: 'Student', status: 'Active', joined: '2026-01-13' },

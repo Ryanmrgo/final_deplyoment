@@ -1,18 +1,68 @@
+"use client";
+
+import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Card, CardContent } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/app/components/ui/accordion';
 import { Avatar, AvatarFallback } from '@/app/components/ui/avatar';
-import { Star, Users, Clock, Award, BookOpen, ChevronRight } from 'lucide-react';
+import { Star, Users, Clock, Award, BookOpen, ChevronRight, CheckCircle } from 'lucide-react';
 import { courses } from '@/app/data/mockData';
+import { useAuth } from '@/app/components/AuthContext';
 
 interface CourseDetailsProps {
   id: string;
 }
 
 export function CourseDetails({ id }: CourseDetailsProps) {
+  const { user, userRole, isLoading } = useAuth();
+  const router = useRouter();
+  const [isEnrolled, setIsEnrolled] = useState(false);
+  const [isEnrolling, setIsEnrolling] = useState(false);
+  const [enrollError, setEnrollError] = useState('');
+  
   const course = courses.find((c) => c.id === id);
+
+  const handleEnroll = async () => {
+    if (!course) return;
+
+    if (isLoading) return;
+
+    if (!user) {
+      router.push('/auth/sign-in');
+      return;
+    }
+
+    if (userRole !== 'student') {
+      setEnrollError('Only students can enroll in courses');
+      return;
+    }
+
+    setIsEnrolling(true);
+    setEnrollError('');
+
+    try {
+      const response = await fetch('/api/enrollment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ courseId: course.id }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to enroll');
+      }
+
+      setIsEnrolled(true);
+    } catch (error: any) {
+      setEnrollError(error.message || 'Failed to enroll in course');
+    } finally {
+      setIsEnrolling(false);
+    }
+  };
 
   if (!course) {
     return (
@@ -205,9 +255,51 @@ export function CourseDetails({ id }: CourseDetailsProps) {
                   <p className="text-gray-600">100% Free, No Hidden Costs</p>
                 </div>
 
-                <Button className="w-full bg-[#F59E0B] hover:bg-[#F59E0B]/90 text-white py-6 text-lg mb-4">
-                  Enroll Now - It's Free!
-                </Button>
+                {userRole === 'student' ? (
+                  <>
+                    {isEnrolled ? (
+                      <div className="w-full border-2 border-green-200 bg-green-50 rounded-lg py-6 text-center mb-4">
+                        <CheckCircle className="w-8 h-8 text-green-600 mx-auto mb-2" />
+                        <p className="text-green-800 font-semibold">
+                          ✅ You're Enrolled!
+                        </p>
+                        <p className="text-green-600 text-sm mt-1">
+                          Start learning now
+                        </p>
+                      </div>
+                    ) : (
+                      <>
+                        <Button 
+                          onClick={handleEnroll}
+                          disabled={isEnrolling}
+                          className="w-full bg-[#F59E0B] hover:bg-[#F59E0B]/90 text-white py-6 text-lg mb-4"
+                        >
+                          {isEnrolling ? 'Enrolling...' : 'Enroll Now - It\'s Free!'}
+                        </Button>
+                        {enrollError && (
+                          <p className="text-red-600 text-sm text-center mb-2">
+                            {enrollError}
+                          </p>
+                        )}
+                      </>
+                    )}
+                  </>
+                ) : userRole === 'teacher' ? (
+                  <div className="w-full border-2 border-blue-200 bg-blue-50 rounded-lg py-6 text-center mb-4">
+                    <p className="text-blue-800 font-semibold">
+                      👨‍🏫 Teacher View Only
+                    </p>
+                    <p className="text-blue-600 text-sm mt-1">
+                      Teachers cannot enroll in courses
+                    </p>
+                  </div>
+                ) : (
+                  <Link href="/auth/sign-in">
+                    <Button className="w-full bg-[#F59E0B] hover:bg-[#F59E0B]/90 text-white py-6 text-lg mb-4">
+                      Sign In to Enroll
+                    </Button>
+                  </Link>
+                )}
 
                 <div className="space-y-4 pt-4 border-t">
                   <div className="flex items-center justify-between">

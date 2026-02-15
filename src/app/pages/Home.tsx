@@ -28,7 +28,7 @@ export function Home() {
                   Explore Courses
                 </Button>
               </Link>
-              <Link href="/register">
+              <Link href="/auth/sign-up">
                 <Button variant="outline" className="bg-white text-[#1E3A8A] hover:bg-gray-100 text-lg px-8 py-6">
                   Get Started Free
                 </Button>
@@ -144,7 +144,7 @@ export function Home() {
             <CardContent className="p-12 text-center">
               <h2 className="text-3xl font-bold mb-4">Ready to Start Learning?</h2>
               <p className="text-xl mb-8">Join thousands of learners on AlinHub today. It's completely free!</p>
-              <Link href="/register">
+              <Link href="/auth/sign-up">
                 <Button className="bg-white text-[#F59E0B] hover:bg-gray-100 text-lg px-8 py-6">
                   Sign Up Now
                 </Button>

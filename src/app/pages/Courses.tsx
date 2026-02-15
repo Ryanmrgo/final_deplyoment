@@ -1,45 +1,64 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { CourseCard } from '@/app/components/CourseCard';
 import { Input } from '@/app/components/ui/input';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
 import { Search, Filter } from 'lucide-react';
-import { courses, categories } from '@/app/data/mockData';
+import { categories } from '@/app/data/mockData';
+
+interface Course {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  instructor: { name: string; avatar: string };
+  rating: number;
+  reviewCount: number;
+  students: number;
+  level: string;
+  duration: string;
+  image: string;
+}
 
 export function Courses() {
   const searchParams = useSearchParams();
   const categoryFromUrl = searchParams.get('category');
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(categoryFromUrl);
-  const [filteredCourses, setFilteredCourses] = useState(courses);
+  const [filteredCourses, setFilteredCourses] = useState<Course[]>([]);
+
+  const fetchCourses = useCallback(async () => {
+    try {
+      setLoading(true);
+      const params = new URLSearchParams();
+      if (selectedCategory) {
+        const catName = categories.find((c) => c.id === selectedCategory)?.name;
+        if (catName) params.set('category', catName);
+      }
+      if (searchQuery) params.set('search', searchQuery);
+      const res = await fetch(`/api/courses?${params}`);
+      const data = await res.json();
+      setFilteredCourses(data.items || []);
+    } catch {
+      setFilteredCourses([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedCategory, searchQuery]);
 
   useEffect(() => {
     setSelectedCategory(categoryFromUrl);
   }, [categoryFromUrl]);
 
   useEffect(() => {
-    let result = courses;
+    fetchCourses();
+  }, [fetchCourses]);
 
-    // Filter by category
-    if (selectedCategory) {
-      result = result.filter((course) => course.categoryId === selectedCategory);
-    }
-
-    // Filter by search query
-    if (searchQuery) {
-      result = result.filter(
-        (course) =>
-          course.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          course.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          course.category.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-    }
-
-    setFilteredCourses(result);
-  }, [searchQuery, selectedCategory]);
+  const handleSearch = () => fetchCourses();
 
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
@@ -48,7 +67,7 @@ export function Courses() {
         <div className="container mx-auto px-4">
           <h1 className="text-4xl font-bold mb-4">Explore Our Free Courses</h1>
           <p className="text-xl text-gray-200">
-            Discover {courses.length}+ courses across multiple categories. All completely free!
+            Discover free courses across multiple categories. All completely free!
           </p>
         </div>
       </section>
@@ -66,10 +85,14 @@ export function Courses() {
                 className="pl-10 py-6 text-lg bg-white"
               />
             </div>
-            <Button className="bg-[#1E3A8A] hover:bg-[#1E3A8A]/90 text-white px-6">
-              <Filter className="w-5 h-5 mr-2" />
-              Filter
-            </Button>
+            <Button
+                onClick={handleSearch}
+                disabled={loading}
+                className="bg-[#1E3A8A] hover:bg-[#1E3A8A]/90 text-white px-6"
+              >
+                <Search className="w-5 h-5 mr-2" />
+                Search
+              </Button>
           </div>
 
           {/* Category Filter */}
@@ -121,7 +144,11 @@ export function Courses() {
         </div>
 
         {/* Course Grid */}
-        {filteredCourses.length > 0 ? (
+        {loading ? (
+          <div className="col-span-full flex justify-center py-16">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#1E3A8A]"></div>
+          </div>
+        ) : filteredCourses.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {filteredCourses.map((course) => (
               <CourseCard key={course.id} {...course} />

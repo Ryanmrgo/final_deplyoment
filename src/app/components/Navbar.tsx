@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { BookOpen, Home, Library, User, LogIn, LogOut, Users, LayoutDashboard } from 'lucide-react';
+import { BookOpen, Home, Library, User, LogIn, Users, LayoutDashboard } from 'lucide-react';
+import { SignedIn, SignedOut, UserButton } from '@clerk/nextjs';
 import { Button } from '@/app/components/ui/button';
 import { useAuth } from '@/app/components/AuthContext';
 
@@ -11,9 +12,9 @@ interface NavbarProps {
   onLogout?: () => void;
 }
 
-export function Navbar({ userRole, onLogout }: NavbarProps) {
+export function Navbar({ userRole }: NavbarProps) {
   const pathname = usePathname();
-  const { userRole: contextRole, logout } = useAuth();
+  const { userRole: contextRole, isLoading } = useAuth();
   const resolvedRole = userRole ?? contextRole;
 
   const isActive = (path: string) => pathname === path;
@@ -50,7 +51,7 @@ export function Navbar({ userRole, onLogout }: NavbarProps) {
               <span>Courses</span>
             </Link>
 
-            {resolvedRole === 'student' && (
+            {!isLoading && resolvedRole === 'student' && (
               <Link
                 href="/dashboard/student"
                 className={`flex items-center gap-2 hover:text-[#F59E0B] transition ${
@@ -62,7 +63,7 @@ export function Navbar({ userRole, onLogout }: NavbarProps) {
               </Link>
             )}
 
-            {resolvedRole === 'teacher' && (
+            {!isLoading && resolvedRole === 'teacher' && (
               <Link
                 href="/dashboard/teacher"
                 className={`flex items-center gap-2 hover:text-[#F59E0B] transition ${
@@ -74,7 +75,7 @@ export function Navbar({ userRole, onLogout }: NavbarProps) {
               </Link>
             )}
 
-            {resolvedRole === 'admin' && (
+            {!isLoading && resolvedRole === 'admin' && (
               <Link
                 href="/dashboard/admin"
                 className={`flex items-center gap-2 hover:text-[#F59E0B] transition ${
@@ -87,38 +88,41 @@ export function Navbar({ userRole, onLogout }: NavbarProps) {
             )}
 
             {/* Auth Buttons */}
-            {!resolvedRole ? (
+            <SignedOut>
               <div className="flex items-center gap-3 ml-4">
-                <Link href="/login">
+                <Link href="/auth/sign-in">
                   <Button variant="ghost" className="text-white hover:text-[#F59E0B] hover:bg-white/10">
                     <LogIn className="w-4 h-4 mr-2" />
                     Login
                   </Button>
                 </Link>
-                <Link href="/register">
+                <Link href="/auth/sign-up">
                   <Button className="bg-[#F59E0B] text-white hover:bg-[#F59E0B]/90">
                     Get Started
                   </Button>
                 </Link>
               </div>
-            ) : (
+            </SignedOut>
+
+            <SignedIn>
               <div className="flex items-center gap-3 ml-4">
-                <Link href={`/dashboard/${resolvedRole}`}>
-                  <Button variant="ghost" className="text-white hover:text-[#F59E0B] hover:bg-white/10">
-                    <User className="w-4 h-4 mr-2" />
-                    Profile
-                  </Button>
-                </Link>
-                <Button
-                  variant="ghost"
-                  className="text-white hover:text-[#F59E0B] hover:bg-white/10"
-                  onClick={onLogout ?? logout}
-                >
-                  <LogOut className="w-4 h-4 mr-2" />
-                  Logout
-                </Button>
+                {!isLoading && resolvedRole && (
+                  <Link href={`/dashboard/${resolvedRole}`}>
+                    <Button variant="ghost" className="text-white hover:text-[#F59E0B] hover:bg-white/10">
+                      <User className="w-4 h-4 mr-2" />
+                      Dashboard
+                    </Button>
+                  </Link>
+                )}
+                <UserButton
+                  appearance={{
+                    elements: {
+                      avatarBox: 'w-10 h-10',
+                    },
+                  }}
+                />
               </div>
-            )}
+            </SignedIn>
           </div>
         </div>
       </div>
