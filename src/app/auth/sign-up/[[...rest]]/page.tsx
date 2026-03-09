@@ -5,6 +5,8 @@ export default function SignUpPage() {
     <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4 py-12">
       <div className="w-full max-w-md">
         <SignUp
+          forceRedirectUrl="/dashboard"
+          fallbackRedirectUrl="/dashboard"
           appearance={{
             elements: {
               rootBox: 'w-full',

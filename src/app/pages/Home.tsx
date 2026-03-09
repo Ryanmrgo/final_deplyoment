@@ -1,12 +1,16 @@
+"use client";
+
 import Link from 'next/link';
 import { Button } from '@/app/components/ui/button';
 import { CourseCard } from '@/app/components/CourseCard';
 import { Card, CardContent } from '@/app/components/ui/card';
 import { BookOpen, Users, Award, Globe } from 'lucide-react';
-import { courses, categories } from '@/app/data/mockData';
+import { categories } from '@/app/data/mockData';
+import { useCourses } from '@/app/components/CoursesContext';
 
 export function Home() {
-  const featuredCourses = courses.slice(0, 3);
+  const { publicCourses } = useCourses();
+  const featuredCourses = publicCourses.slice(0, 3);
 
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
@@ -77,7 +81,14 @@ export function Home() {
       {/* Categories Section */}
       <section className="py-16">
         <div className="container mx-auto px-4">
-          <h2 className="text-3xl font-bold text-center mb-12 text-gray-900">Explore by Category</h2>
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-12">
+            <h2 className="text-3xl font-bold text-center md:text-left text-gray-900">Explore by Category</h2>
+            <Link href="/categories">
+              <Button variant="outline" className="border-[#1E3A8A] text-[#1E3A8A] hover:bg-[#1E3A8A] hover:text-white">
+                View All Categories
+              </Button>
+            </Link>
+          </div>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
             {categories.map((category) => (
               <Link key={category.id} href={`/courses?category=${category.id}`}>

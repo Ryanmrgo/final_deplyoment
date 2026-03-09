@@ -52,18 +52,28 @@ export default function OnboardingPage() {
       });
 
       if (!response.ok) {
+        const errorData = await response.json();
+        console.error('Failed to update role:', errorData);
         throw new Error('Failed to update role');
       }
+
+      const data = await response.json();
+      console.log('[Onboarding] Role update API response:', data);
 
       await user.reload();
       await session?.reload();
 
-      // Redirect to appropriate dashboard after claims refresh
-      router.replace(`/dashboard/${role}`);
-      router.refresh();
+      // Force token refresh so middleware gets the new role (Clerk tokens can lag 10–15s otherwise)
+      await session?.getToken({ skipCache: true });
+
+      console.log('[Onboarding] Redirecting to dashboard:', role);
+
+      // Use window.location for full page reload to ensure fresh tokens
+      setTimeout(() => {
+        window.location.href = `/dashboard/${role}`;
+      }, 500);
     } catch (error) {
       console.error('Error setting role:', error);
-    } finally {
       setLoading(false);
     }
   };
