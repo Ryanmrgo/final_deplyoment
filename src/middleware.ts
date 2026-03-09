@@ -1,4 +1,5 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
+import { clerkClient } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
 
 const isDashboardRoute = createRouteMatcher(['/dashboard(.*)']);
@@ -10,22 +11,41 @@ const isTeacherApiRoute = createRouteMatcher(['/api/teacher(.*)']);
 const isStudentApiRoute = createRouteMatcher(['/api/student(.*)']);
 const isWebhookRoute = createRouteMatcher(['/api/webhooks/(.*)']);
 
-export default clerkMiddleware((auth, req) => {
+export default clerkMiddleware(async (auth, req) => {
   if (isWebhookRoute(req)) {
     return NextResponse.next();
   }
 
   if (isDashboardRoute(req) || isEnrollmentRoute(req) || isTeacherApiRoute(req) || isStudentApiRoute(req)) {
-    const { userId, sessionClaims } = auth() as any;
+    const { userId } = await auth();
 
     if (!userId) {
       return NextResponse.redirect(new URL('/auth/sign-in', req.url));
     }
 
-    const role = (sessionClaims?.publicMetadata as any)?.role as string | undefined;
+    // Fetch user data directly from Clerk to get publicMetadata
+    let role: string | undefined;
+    try {
+      const client = await clerkClient();
+      const user = await client.users.getUser(userId);
+      role = (user.publicMetadata?.role as string) || (user.unsafeMetadata?.role as string);
+    } catch (error) {
+      console.error('[Middleware] Error fetching user:', error);
+    }
+
+    // Debug logging
+    console.log('[Middleware Debug]', {
+      pathname: req.nextUrl.pathname,
+      userId,
+      role
+    });
 
     if (!role && !req.nextUrl.pathname.startsWith('/dashboard/onboarding')) {
       return NextResponse.redirect(new URL('/dashboard/onboarding', req.url));
+    }
+
+    if (role && req.nextUrl.pathname.startsWith('/dashboard/onboarding')) {
+      return NextResponse.redirect(new URL(`/dashboard/${role}`, req.url));
     }
 
     if (isTeacherRoute(req) && role !== 'teacher') {

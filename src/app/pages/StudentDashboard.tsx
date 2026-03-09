@@ -1,8 +1,6 @@
 "use client";
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { Progress } from '@/app/components/ui/progress';
 import { Button } from '@/app/components/ui/button';
@@ -12,20 +10,9 @@ import { courses, enrolledCourses, achievements, stats } from '@/app/data/mockDa
 import { useAuth } from '@/app/components/AuthContext';
 
 export function StudentDashboard() {
-  const { user, userRole, isLoading } = useAuth();
-  const router = useRouter();
+  const { user, isLoading } = useAuth();
 
-  useEffect(() => {
-    if (!isLoading && !user) {
-      router.push('/auth/sign-in');
-    } else if (!isLoading && user && !userRole) {
-      router.push('/dashboard/onboarding');
-    } else if (!isLoading && user && userRole !== 'student') {
-      router.push(`/dashboard/${userRole}`);
-    }
-  }, [user, userRole, isLoading, router]);
-
-  if (isLoading || !user || userRole !== 'student') {
+  if (isLoading || !user) {
     return (
       <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center">
         <div className="text-center">

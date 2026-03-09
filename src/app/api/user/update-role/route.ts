@@ -26,16 +26,37 @@ export async function POST(req: Request) {
 
   try {
     const client = await clerkClient();
+    console.log('[Update Role API] Updating role for user:', userId, 'to role:', body.role);
+    
+    // Get full user data from Clerk
+    const clerkUser = await client.users.getUser(userId);
+    
     await client.users.updateUser(userId, {
       publicMetadata: {
         role: body.role,
       },
     });
 
-    await connectDB();
-    await User.findByIdAndUpdate(userId, { role: body.role });
+    console.log('[Update Role API] Clerk metadata updated successfully');
 
-    return NextResponse.json({ success: true });
+    await connectDB();
+    
+    // Upsert user with all fields to ensure document exists
+    await User.findByIdAndUpdate(
+      userId,
+      {
+        _id: userId,
+        email: clerkUser.emailAddresses[0]?.emailAddress || '',
+        name: `${clerkUser.firstName || ''} ${clerkUser.lastName || ''}`.trim(),
+        imageUrl: clerkUser.imageUrl || '',
+        role: body.role,
+      },
+      { upsert: true, new: true }
+    );
+
+    console.log('[Update Role API] Database updated successfully');
+
+    return NextResponse.json({ success: true, role: body.role });
   } catch (error) {
     console.error('Error updating role:', error);
     return NextResponse.json({ error: 'Failed to update role' }, { status: 500 });
