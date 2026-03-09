@@ -36,18 +36,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
       setUserRole(role ?? null);
 
-      // Fallback: fetch role from MongoDB if not in Clerk (session can be stale after sign-in)
-      if (!role) {
-        fetch('/api/user/profile')
-          .then((res) => res.ok ? res.json() : null)
-          .then((data) => {
-            if (data?.role && ['teacher', 'student', 'admin'].includes(data.role)) {
-              setUserRole(data.role as UserRole);
-              setUser((prev) => prev ? { ...prev, role: data.role } : null);
-            }
-          })
-          .catch(() => {});
-      }
+      fetch('/api/user/profile')
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data?.role && ['teacher', 'student', 'admin'].includes(data.role)) {
+            setUserRole(data.role as UserRole);
+            setUser((prev) => (prev ? { ...prev, role: data.role } : null));
+          }
+        })
+        .catch(() => {});
     } else if (isLoaded && !clerkUser) {
       setUser(null);
       setUserRole(null);

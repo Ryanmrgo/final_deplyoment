@@ -19,6 +19,9 @@ export async function GET(
     await connectDB();
     const quiz = await Quiz.findById(id).lean();
     if (!quiz) return NextResponse.json({ error: 'Quiz not found' }, { status: 404 });
+    if (!(quiz as any).isPublished) {
+      return NextResponse.json({ error: 'Quiz is not published yet' }, { status: 403 });
+    }
 
     const enrollment = await Enrollment.findOne({ courseId: (quiz as any).courseId, studentId: userId });
     if (!enrollment) return NextResponse.json({ error: 'Enroll in course first' }, { status: 403 });

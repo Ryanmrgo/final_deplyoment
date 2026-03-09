@@ -9,6 +9,23 @@ const courseSchema = new mongoose.Schema(
     level: { type: String, enum: ['Beginner', 'Intermediate', 'Advanced'], default: 'Beginner' },
     duration: { type: Number, default: 0 }, // in hours
     image: { type: String, default: '' }, // Cloudinary URL
+    syllabusUrl: { type: String, default: '' },
+    syllabusName: { type: String, default: '' },
+    syllabusType: { type: String, default: '' },
+    syllabusMaterials: {
+      type: [
+        {
+          label: { type: String, default: '' },
+          url: { type: String, default: '' },
+          name: { type: String, default: '' },
+          type: { type: String, default: '' },
+        },
+      ],
+      default: [],
+    },
+    language: { type: String, default: 'English' },
+    requirements: { type: String, default: '' },
+    outcomes: { type: String, default: '' },
     price: { type: Number, default: 0 },
     startDate: { type: Date, default: Date.now },
     endDate: { type: Date, default: null },

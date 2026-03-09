@@ -33,7 +33,15 @@ export async function POST(req: Request) {
     });
 
     await connectDB();
-    await User.findByIdAndUpdate(userId, { role: body.role });
+    await User.findByIdAndUpdate(
+      userId,
+      {
+        _id: userId,
+        role: body.role,
+        updatedAt: new Date(),
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
 
     return NextResponse.json({ success: true });
   } catch (error) {

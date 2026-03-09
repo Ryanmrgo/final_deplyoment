@@ -141,6 +141,9 @@ export function QuizTake({ courseId, quizId }: QuizTakeProps) {
                 <p className="font-semibold mb-3">
                   {idx + 1}. {q.questionText}
                 </p>
+                {q.type === 'fill-in-the-blank' && (
+                  <p className="text-xs text-gray-600 mb-2">Fill in the blank(s) marked with ___ or [blank]</p>
+                )}
                 {q.type === 'multiple-choice' && q.options?.length > 0 ? (
                   <RadioGroup
                     value={answers[idx] ?? ''}
@@ -155,7 +158,7 @@ export function QuizTake({ courseId, quizId }: QuizTakeProps) {
                   </RadioGroup>
                 ) : (
                   <Input
-                    placeholder="Your answer"
+                    placeholder={q.type === 'fill-in-the-blank' ? 'Type your answer here' : 'Your answer'}
                     value={answers[idx] ?? ''}
                     onChange={(e) => setAnswers((prev) => ({ ...prev, [idx]: e.target.value }))}
                   />

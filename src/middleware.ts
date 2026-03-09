@@ -23,7 +23,8 @@ export default clerkMiddleware(async (auth, req) => {
       return NextResponse.redirect(new URL('/auth/sign-in', req.url));
     }
 
-    let role = (sessionClaims?.publicMetadata as any)?.role as string | undefined;
+    const roleClaim = (sessionClaims?.publicMetadata as any)?.role as string | undefined;
+    let role = typeof roleClaim === 'string' ? roleClaim.trim().toLowerCase() : undefined;
 
     // When role is missing in session, allow dashboard routes through - dashboard page will check MongoDB
     if (!role) {
@@ -50,19 +51,8 @@ export default clerkMiddleware(async (auth, req) => {
       return NextResponse.json({ error: 'Student role required' }, { status: 403 });
     }
 
-    // When role is missing from session (e.g. after onboarding, claims not yet refreshed),
-    // allow through so API routes can verify role from MongoDB via getEffectiveRole.
-    if (isTeacherApiRoute(req) && role != null && role !== 'teacher') {
-      return NextResponse.json({ error: 'Teacher role required' }, { status: 403 });
-    }
-
-    if (isStudentApiRoute(req) && role != null && role !== 'student') {
-      return NextResponse.json({ error: 'Student role required' }, { status: 403 });
-    }
-
-    if (isAdminApiRoute(req) && role != null && role !== 'admin') {
-      return NextResponse.json({ error: 'Admin role required' }, { status: 403 });
-    }
+    // Do not enforce API role checks from session claims in middleware because claims can be stale.
+    // API routes enforce role with getEffectiveRole() using DB fallback.
   }
 
   return NextResponse.next();

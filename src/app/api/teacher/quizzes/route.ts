@@ -1,17 +1,15 @@
-import { auth } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
 import connectDB from '@/config/db';
 import Quiz from '@/models/Quiz';
 import mongoose from 'mongoose';
+import { getEffectiveRole } from '@/lib/auth';
 
 export async function GET(req: Request) {
-  const { userId, sessionClaims } = await auth();
+  const { userId, role } = await getEffectiveRole();
 
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-
-  const role = (sessionClaims?.publicMetadata as any)?.role as string | undefined;
 
   if (role !== 'teacher') {
     return NextResponse.json({ error: 'Teacher role required' }, { status: 403 });
@@ -36,13 +34,11 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const { userId, sessionClaims } = await auth();
+  const { userId, role } = await getEffectiveRole();
 
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-
-  const role = (sessionClaims?.publicMetadata as any)?.role as string | undefined;
 
   if (role !== 'teacher') {
     return NextResponse.json({ error: 'Teacher role required' }, { status: 403 });
@@ -65,6 +61,8 @@ export async function POST(req: Request) {
       totalPoints: body.totalPoints || 0,
       passingScore: body.passingScore || 70,
       timeLimit: body.timeLimit || 0,
+      attempts: body.attempts || 1,
+      isPublished: Boolean(body.isPublished),
     });
     await quiz.save();
     return NextResponse.json({ success: true, quiz });

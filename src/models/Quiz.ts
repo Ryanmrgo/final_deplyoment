@@ -9,7 +9,7 @@ const quizSchema = new mongoose.Schema(
     questions: [
       {
         questionText: String,
-        type: { type: String, enum: ['multiple-choice', 'short-answer', 'true-false'], default: 'multiple-choice' },
+        type: { type: String, enum: ['multiple-choice', 'fill-in-the-blank', 'short-answer', 'true-false'], default: 'multiple-choice' },
         options: [String], // for multiple choice
         correctAnswer: String, // index or text
         points: { type: Number, default: 1 },

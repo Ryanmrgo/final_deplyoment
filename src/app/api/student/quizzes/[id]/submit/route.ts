@@ -25,6 +25,9 @@ export async function POST(
     await connectDB();
     const quiz = await Quiz.findById(id).lean();
     if (!quiz) return NextResponse.json({ error: 'Quiz not found' }, { status: 404 });
+    if (!(quiz as any).isPublished) {
+      return NextResponse.json({ error: 'Quiz is not published yet' }, { status: 403 });
+    }
 
     const enrollment = await Enrollment.findOne({ courseId: (quiz as any).courseId, studentId: userId });
     if (!enrollment) return NextResponse.json({ error: 'Enroll in course first' }, { status: 403 });
@@ -57,6 +60,10 @@ export async function POST(
     const passed = percentage >= passingScore;
 
     const attemptCount = await QuizAttempt.countDocuments({ studentId: userId, quizId: id });
+    const maxAttempts = Math.max(1, Number((quiz as any).attempts ?? 1));
+    if (attemptCount >= maxAttempts) {
+      return NextResponse.json({ error: 'Maximum attempts reached' }, { status: 400 });
+    }
 
     const attempt = new QuizAttempt({
       studentId: userId,
