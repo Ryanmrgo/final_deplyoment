@@ -1,64 +1,50 @@
 "use client";
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { CourseCard } from '@/app/components/CourseCard';
-import { Input } from '@/app/components/ui/input';
-import { Button } from '@/app/components/ui/button';
+import { useCourses } from '@/app/components/CoursesContext';
 import { Badge } from '@/app/components/ui/badge';
-import { Search, Filter } from 'lucide-react';
+import { Button } from '@/app/components/ui/button';
+import { Input } from '@/app/components/ui/input';
 import { categories } from '@/app/data/mockData';
-
-interface Course {
-  id: string;
-  title: string;
-  description: string;
-  category: string;
-  instructor: { name: string; avatar: string };
-  rating: number;
-  reviewCount: number;
-  students: number;
-  level: string;
-  duration: string;
-  image: string;
-}
+import { Filter, Search } from 'lucide-react';
 
 export function Courses() {
+  const { publicCourses, isEnrolled, getEnrollmentDate } = useCourses();
   const searchParams = useSearchParams();
   const categoryFromUrl = searchParams.get('category');
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(categoryFromUrl);
-  const [filteredCourses, setFilteredCourses] = useState<Course[]>([]);
-
-  const fetchCourses = useCallback(async () => {
-    try {
-      setLoading(true);
-      const params = new URLSearchParams();
-      if (selectedCategory) {
-        const catName = categories.find((c) => c.id === selectedCategory)?.name;
-        if (catName) params.set('category', catName);
-      }
-      if (searchQuery) params.set('search', searchQuery);
-      const res = await fetch(`/api/courses?${params}`);
-      const data = await res.json();
-      setFilteredCourses(data.items || []);
-    } catch {
-      setFilteredCourses([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedCategory, searchQuery]);
+  const [filteredCourses, setFilteredCourses] = useState(publicCourses);
 
   useEffect(() => {
     setSelectedCategory(categoryFromUrl);
   }, [categoryFromUrl]);
 
   useEffect(() => {
-    fetchCourses();
-  }, [fetchCourses]);
+    setLoading(true);
+    let result = publicCourses;
 
-  const handleSearch = () => fetchCourses();
+    // Filter by category
+    if (selectedCategory) {
+      result = result.filter((course) => course.categoryId === selectedCategory);
+    }
+
+    // Filter by search query
+    if (searchQuery) {
+      result = result.filter(
+        (course) =>
+          course.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          course.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          course.category.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+
+    setFilteredCourses(result);
+    setLoading(false);
+  }, [searchQuery, selectedCategory, publicCourses]);
 
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
@@ -67,7 +53,7 @@ export function Courses() {
         <div className="container mx-auto px-4">
           <h1 className="text-4xl font-bold mb-4">Explore Our Free Courses</h1>
           <p className="text-xl text-gray-200">
-            Discover free courses across multiple categories. All completely free!
+            Discover {publicCourses.length}+ courses across multiple categories. All completely free!
           </p>
         </div>
       </section>
@@ -79,20 +65,12 @@ export function Courses() {
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
               <Input
-                placeholder="Search courses..."
+                placeholder="Search courses by title, description, or category..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10 py-6 text-lg bg-white"
               />
             </div>
-            <Button
-                onClick={handleSearch}
-                disabled={loading}
-                className="bg-[#1E3A8A] hover:bg-[#1E3A8A]/90 text-white px-6"
-              >
-                <Search className="w-5 h-5 mr-2" />
-                Search
-              </Button>
           </div>
 
           {/* Category Filter */}
@@ -141,6 +119,14 @@ export function Courses() {
               </span>
             )}
           </p>
+          {/* Show enrolled courses count */}
+          <div className="mt-2">
+            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+              <span className="font-semibold">
+                {filteredCourses.filter(c => isEnrolled(c.id)).length}
+              </span> courses enrolled
+            </Badge>
+          </div>
         </div>
 
         {/* Course Grid */}
@@ -151,7 +137,13 @@ export function Courses() {
         ) : filteredCourses.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {filteredCourses.map((course) => (
-              <CourseCard key={course.id} {...course} />
+              <CourseCard
+                key={course.id}
+                {...course}
+                isEnrolled={isEnrolled(course.id)}
+                enrollmentDate={getEnrollmentDate(course.id) || undefined}
+                userProgress={course.userProgress || 0}
+              />
             ))}
           </div>
         ) : (
