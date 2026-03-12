@@ -71,7 +71,7 @@ export function QuizTake({ courseId, quizId }: QuizTakeProps) {
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <p className="text-gray-600 mb-4">Quiz not found or not accessible.</p>
-          <Link href={`/courses/${courseId}/learn`}>
+          <Link href={`/courses/${courseId}`}>
             <Button>Back to Course</Button>
           </Link>
         </div>
@@ -105,7 +105,7 @@ export function QuizTake({ courseId, quizId }: QuizTakeProps) {
                 Passing score: {quiz.passingScore}%
               </p>
               <div className="flex justify-center gap-4 pt-4">
-                <Link href={`/courses/${courseId}/learn`}>
+                <Link href={`/courses/${courseId}`}>
                   <Button className="bg-[#1E3A8A]">Back to Course</Button>
                 </Link>
                 <Button variant="outline" onClick={() => { setResult(null); setAnswers({}); }}>
@@ -124,7 +124,7 @@ export function QuizTake({ courseId, quizId }: QuizTakeProps) {
   return (
     <div className="min-h-screen bg-[#F8FAFC] py-12">
       <div className="container max-w-2xl mx-auto px-4">
-        <Link href={`/courses/${courseId}/learn`} className="inline-flex items-center text-[#1E3A8A] hover:underline mb-6">
+        <Link href={`/courses/${courseId}`} className="inline-flex items-center text-[#1E3A8A] hover:underline mb-6">
           <ChevronLeft className="w-5 h-5 mr-1" />
           Back to Course
         </Link>

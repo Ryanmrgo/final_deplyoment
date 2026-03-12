@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import connectDB from '@/config/db';
 import Quiz from '@/models/Quiz';
+import Course from '@/models/Course';
 import mongoose from 'mongoose';
 import { getEffectiveRole } from '@/lib/auth';
 
@@ -50,12 +51,27 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'title and courseId are required' }, { status: 400 });
   }
 
+  if (!mongoose.Types.ObjectId.isValid(body.courseId)) {
+    return NextResponse.json({ error: 'Invalid courseId' }, { status: 400 });
+  }
+
   try {
     await connectDB();
+
+    // Ensure quiz is attached only to an existing course owned by the current teacher.
+    const course = await Course.findOne({
+      _id: new mongoose.Types.ObjectId(body.courseId),
+      instructor: userId,
+    }).lean();
+
+    if (!course) {
+      return NextResponse.json({ error: 'Course not found or not owned by teacher' }, { status: 404 });
+    }
+
     const quiz = new Quiz({
       title: body.title,
       description: body.description || '',
-      courseId: new mongoose.Types.ObjectId(body.courseId),
+      courseId: course._id,
       instructorId: userId,
       questions: body.questions || [],
       totalPoints: body.totalPoints || 0,

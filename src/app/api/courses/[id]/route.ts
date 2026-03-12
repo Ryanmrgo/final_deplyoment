@@ -60,6 +60,14 @@ export async function GET(
       }
     }
 
+    const reviewStudentIds = [...new Set((course.reviews || []).map((r: any) => r.studentId).filter(Boolean))];
+    const reviewUsers = reviewStudentIds.length
+      ? await User.find({ _id: { $in: reviewStudentIds } }).select('_id name').lean()
+      : [];
+    const reviewUserMap = Object.fromEntries(reviewUsers.map((u: any) => [String(u._id), String(u.name || 'Student')]));
+
+    const myReview = (course.reviews || []).find((r: any) => r.studentId === userId);
+
     const result = {
       id: course._id.toString(),
       title: course.title,
@@ -85,14 +93,22 @@ export async function GET(
       syllabusUrl: (course as any).syllabusUrl || '',
       syllabusName: (course as any).syllabusName || '',
       syllabusType: (course as any).syllabusType || '',
+      syllabusMaterials: (course as any).syllabusMaterials || [],
       syllabus: (course as any).syllabus || [],
       reviews: (course.reviews || []).map((r: any) => ({
         id: r._id?.toString() || r.studentId,
-        student: 'Student',
+        student: reviewUserMap[r.studentId] || 'Student',
+        studentId: r.studentId,
         rating: r.rating,
         comment: r.comment,
         date: r.createdAt ? new Date(r.createdAt).toISOString().split('T')[0] : '',
       })),
+      myReview: myReview
+        ? {
+            rating: myReview.rating,
+            comment: myReview.comment,
+          }
+        : null,
       isEnrolled,
       enrollmentId,
       enrollmentProgress,

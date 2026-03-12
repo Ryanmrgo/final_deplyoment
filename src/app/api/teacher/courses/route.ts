@@ -3,6 +3,7 @@ import connectDB from '@/config/db';
 import Course from '@/models/Course';
 import { getEffectiveRole } from '@/lib/auth';
 import { uploadToCloudinary } from '@/lib/cloudinary';
+import { v2 as cloudinary } from 'cloudinary';
 
 export async function GET() {
   const { userId, role } = await getEffectiveRole();
@@ -176,7 +177,8 @@ export async function POST(req: Request) {
       duration,
       image: (thumbnailUpload?.url ?? body.image ?? '') as string,
       price,
-      status: body.status || 'Draft', // Draft = hidden from students (Moodle style); teacher publishes when ready
+      // Default to Published so newly created courses appear immediately in catalog/student enrollment.
+      status: body.status || 'Published',
       syllabusUrl: (syllabusMaterials[0]?.url ?? syllabusUpload?.url ?? body.syllabusUrl ?? '') as string,
       syllabusName: (syllabusMaterials[0]?.name ?? syllabusUpload?.name ?? body.syllabusName ?? '') as string,
       syllabusType: (syllabusMaterials[0]?.type ?? syllabusUpload?.type ?? body.syllabusType ?? '') as string,

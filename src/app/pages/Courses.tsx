@@ -3,33 +3,162 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { CourseCard } from '@/app/components/CourseCard';
-import { useCourses } from '@/app/components/CoursesContext';
 import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
-import { categories } from '@/app/data/mockData';
-import { Filter, Search } from 'lucide-react';
+import { Search } from 'lucide-react';
+import { useAuth } from '@/app/components/AuthContext';
+import { COURSE_CATEGORIES } from '@/lib/courseCategories';
+
+type CategoryItem = { id: string; name: string; icon: string };
+
+type CourseItem = {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  instructor: { name: string; avatar: string };
+  rating: number;
+  reviewCount: number;
+  students: number;
+  level: string;
+  duration: string;
+  image?: string;
+  userProgress?: number;
+};
 
 export function Courses() {
-  const { publicCourses, isEnrolled, getEnrollmentDate } = useCourses();
+  const { user, userRole } = useAuth();
   const searchParams = useSearchParams();
   const categoryFromUrl = searchParams.get('category');
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(categoryFromUrl);
-  const [filteredCourses, setFilteredCourses] = useState(publicCourses);
+  const [courses, setCourses] = useState<CourseItem[]>([]);
+  const [filteredCourses, setFilteredCourses] = useState<CourseItem[]>([]);
+  const [enrollments, setEnrollments] = useState<Record<string, string>>({});
+  const [categories, setCategories] = useState<CategoryItem[]>(COURSE_CATEGORIES);
+
+  useEffect(() => {
+    let mounted = true;
+    fetch('/api/categories')
+      .then((r) => (r.ok ? r.json() : { items: COURSE_CATEGORIES }))
+      .then((data) => {
+        const items = Array.isArray(data?.items) && data.items.length ? data.items : COURSE_CATEGORIES;
+        if (mounted) setCategories(items);
+      })
+      .catch(() => {
+        if (mounted) setCategories(COURSE_CATEGORIES);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    const controller = new AbortController();
+
+    const fetchCourses = async () => {
+      setLoading(true);
+      try {
+        const res = await fetch('/api/courses', { signal: controller.signal });
+        if (!res.ok) {
+          if (mounted) setCourses([]);
+          return;
+        }
+        const data = await res.json();
+        if (mounted) {
+          setCourses(Array.isArray(data?.items) ? data.items : []);
+        }
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') return;
+        if (mounted) setCourses([]);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    fetchCourses();
+    return () => {
+      mounted = false;
+      controller.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    const controller = new AbortController();
+
+    if (!user || userRole !== 'student') {
+      setEnrollments({});
+      return () => {
+        mounted = false;
+        controller.abort();
+      };
+    }
+
+    const fetchEnrollments = async () => {
+      try {
+        const res = await fetch('/api/student/enrollments', { signal: controller.signal });
+        if (!res.ok) {
+          if (mounted) setEnrollments({});
+          return;
+        }
+
+        const contentType = res.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+          if (mounted) setEnrollments({});
+          return;
+        }
+
+        const data = await res.json();
+        const items = Array.isArray(data?.items) ? data.items : [];
+        const mapped = items.reduce((acc: Record<string, string>, enrollment: any) => {
+          const courseRef = enrollment?.courseId;
+          const courseId =
+            typeof courseRef === 'string'
+              ? courseRef
+              : courseRef?._id
+                ? String(courseRef._id)
+                : '';
+
+          if (courseId) {
+            acc[courseId] = enrollment?.enrolledAt
+              ? new Date(enrollment.enrolledAt).toISOString().split('T')[0]
+              : '';
+          }
+          return acc;
+        }, {});
+
+        if (mounted) setEnrollments(mapped);
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') return;
+        if (mounted) setEnrollments({});
+      }
+    };
+
+    fetchEnrollments();
+    return () => {
+      mounted = false;
+      controller.abort();
+    };
+  }, [user, userRole]);
 
   useEffect(() => {
     setSelectedCategory(categoryFromUrl);
   }, [categoryFromUrl]);
 
   useEffect(() => {
-    setLoading(true);
-    let result = publicCourses;
+    let result = courses;
 
     // Filter by category
     if (selectedCategory) {
-      result = result.filter((course) => course.categoryId === selectedCategory);
+      const selectedCategoryName = categories.find((category) => category.id === selectedCategory)?.name;
+      result = selectedCategoryName
+        ? result.filter((course) => course.category === selectedCategoryName)
+        : result;
     }
 
     // Filter by search query
@@ -43,8 +172,7 @@ export function Courses() {
     }
 
     setFilteredCourses(result);
-    setLoading(false);
-  }, [searchQuery, selectedCategory, publicCourses]);
+  }, [searchQuery, selectedCategory, courses, categories]);
 
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
@@ -53,7 +181,7 @@ export function Courses() {
         <div className="container mx-auto px-4">
           <h1 className="text-4xl font-bold mb-4">Explore Our Free Courses</h1>
           <p className="text-xl text-gray-200">
-            Discover {publicCourses.length}+ courses across multiple categories. All completely free!
+            Discover {courses.length}+ courses across multiple categories. All completely free!
           </p>
         </div>
       </section>
@@ -123,7 +251,7 @@ export function Courses() {
           <div className="mt-2">
             <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
               <span className="font-semibold">
-                {filteredCourses.filter(c => isEnrolled(c.id)).length}
+                {filteredCourses.filter((course) => Boolean(enrollments[course.id])).length}
               </span> courses enrolled
             </Badge>
           </div>
@@ -140,8 +268,8 @@ export function Courses() {
               <CourseCard
                 key={course.id}
                 {...course}
-                isEnrolled={isEnrolled(course.id)}
-                enrollmentDate={getEnrollmentDate(course.id) || undefined}
+                isEnrolled={Boolean(enrollments[course.id])}
+                enrollmentDate={enrollments[course.id] || undefined}
                 userProgress={course.userProgress || 0}
               />
             ))}

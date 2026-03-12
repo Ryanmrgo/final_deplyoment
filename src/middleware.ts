@@ -18,8 +18,12 @@ export default clerkMiddleware(async (auth, req) => {
 
   if (isDashboardRoute(req) || isEnrollmentRoute(req) || isTeacherApiRoute(req) || isStudentApiRoute(req) || isAdminApiRoute(req)) {
     const { userId, sessionClaims } = await auth();
+    const isApiRequest = req.nextUrl.pathname.startsWith('/api');
 
     if (!userId) {
+      if (isApiRequest) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
       return NextResponse.redirect(new URL('/auth/sign-in', req.url));
     }
 
@@ -45,10 +49,6 @@ export default clerkMiddleware(async (auth, req) => {
 
     if (isAdminRoute(req) && role && role !== 'admin') {
       return NextResponse.redirect(new URL(`/dashboard/${role ?? 'student'}`, req.url));
-    }
-
-    if (isEnrollmentRoute(req) && (!role || role !== 'student')) {
-      return NextResponse.json({ error: 'Student role required' }, { status: 403 });
     }
 
     // Do not enforce API role checks from session claims in middleware because claims can be stale.

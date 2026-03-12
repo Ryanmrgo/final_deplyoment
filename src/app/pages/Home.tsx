@@ -1,16 +1,104 @@
 "use client";
 
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
 import { Button } from '@/app/components/ui/button';
 import { CourseCard } from '@/app/components/CourseCard';
 import { Card, CardContent } from '@/app/components/ui/card';
-import { BookOpen, Users, Award, Globe } from 'lucide-react';
-import { categories } from '@/app/data/mockData';
-import { useCourses } from '@/app/components/CoursesContext';
+import { BookOpen, Users, Award } from 'lucide-react';
+import { COURSE_CATEGORIES } from '@/lib/courseCategories';
+
+type CourseItem = {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  instructor: { name: string; avatar: string };
+  rating: number;
+  reviewCount: number;
+  students: number;
+  level: string;
+  duration: string;
+  image?: string;
+};
 
 export function Home() {
-  const { publicCourses } = useCourses();
-  const featuredCourses = publicCourses.slice(0, 3);
+  const [featuredCourses, setFeaturedCourses] = useState<CourseItem[]>([]);
+  const [categories, setCategories] = useState(COURSE_CATEGORIES);
+  const [stats, setStats] = useState({
+    activeLearners: 0,
+    freeCourses: 0,
+    certificatesIssued: 0,
+  });
+
+  const formatStat = (value: number) => new Intl.NumberFormat('en-US').format(value);
+
+  useEffect(() => {
+    let mounted = true;
+    const controller = new AbortController();
+
+    const fetchCourses = async () => {
+      try {
+        const res = await fetch('/api/courses', { signal: controller.signal });
+        if (!res.ok) {
+          if (mounted) setFeaturedCourses([]);
+          return;
+        }
+        const data = await res.json();
+        const items = Array.isArray(data?.items) ? data.items : [];
+        if (mounted) setFeaturedCourses(items.slice(0, 3));
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') return;
+        if (mounted) setFeaturedCourses([]);
+      }
+    };
+
+    fetchCourses();
+    return () => {
+      mounted = false;
+      controller.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    fetch('/api/categories')
+      .then((r) => (r.ok ? r.json() : { items: COURSE_CATEGORIES }))
+      .then((data) => {
+        const items = Array.isArray(data?.items) && data.items.length ? data.items : COURSE_CATEGORIES;
+        if (mounted) setCategories(items);
+      })
+      .catch(() => {
+        if (mounted) setCategories(COURSE_CATEGORIES);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+
+    fetch('/api/stats')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!mounted || !data) return;
+        setStats({
+          activeLearners: Number(data.activeLearners) || 0,
+          freeCourses: Number(data.freeCourses) || 0,
+          certificatesIssued: Number(data.certificatesIssued) || 0,
+        });
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setStats({ activeLearners: 0, freeCourses: 0, certificatesIssued: 0 });
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
@@ -45,34 +133,27 @@ export function Home() {
       {/* Stats Section */}
       <section className="py-12 bg-white">
         <div className="container mx-auto px-4">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <div className="text-center">
               <div className="flex justify-center mb-3">
                 <Users className="w-12 h-12 text-[#F59E0B]" />
               </div>
-              <h3 className="text-3xl font-bold text-[#1E3A8A] mb-2">5,420+</h3>
+              <h3 className="text-3xl font-bold text-[#1E3A8A] mb-2">{formatStat(stats.activeLearners)}</h3>
               <p className="text-gray-600">Active Learners</p>
             </div>
             <div className="text-center">
               <div className="flex justify-center mb-3">
                 <BookOpen className="w-12 h-12 text-[#F59E0B]" />
               </div>
-              <h3 className="text-3xl font-bold text-[#1E3A8A] mb-2">127</h3>
+              <h3 className="text-3xl font-bold text-[#1E3A8A] mb-2">{formatStat(stats.freeCourses)}</h3>
               <p className="text-gray-600">Free Courses</p>
             </div>
             <div className="text-center">
               <div className="flex justify-center mb-3">
                 <Award className="w-12 h-12 text-[#F59E0B]" />
               </div>
-              <h3 className="text-3xl font-bold text-[#1E3A8A] mb-2">2,340</h3>
+              <h3 className="text-3xl font-bold text-[#1E3A8A] mb-2">{formatStat(stats.certificatesIssued)}</h3>
               <p className="text-gray-600">Certificates Issued</p>
-            </div>
-            <div className="text-center">
-              <div className="flex justify-center mb-3">
-                <Globe className="w-12 h-12 text-[#F59E0B]" />
-              </div>
-              <h3 className="text-3xl font-bold text-[#1E3A8A] mb-2">45+</h3>
-              <p className="text-gray-600">Countries Reached</p>
             </div>
           </div>
         </div>
@@ -117,7 +198,7 @@ export function Home() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {featuredCourses.map((course) => (
-              <CourseCard key={course.id} {...course} />
+              <CourseCard key={course.id} {...course} isEnrolled={false} />
             ))}
           </div>
         </div>

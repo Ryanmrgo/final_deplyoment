@@ -1,16 +1,67 @@
 "use client";
 
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
 import { Card, CardContent } from '@/app/components/ui/card';
-import { categories } from '@/app/data/mockData';
-import { useCourses } from '@/app/components/CoursesContext';
+import { COURSE_CATEGORIES } from '@/lib/courseCategories';
+
+type CategoryItem = { id: string; name: string; icon: string };
 
 export function Categories() {
-  const { publicCourses } = useCourses();
-  const courseCounts = publicCourses.reduce<Record<string, number>>((acc, course) => {
-    acc[course.categoryId] = (acc[course.categoryId] ?? 0) + 1;
-    return acc;
-  }, {});
+  const [courseCounts, setCourseCounts] = useState<Record<string, number>>({});
+  const [categories, setCategories] = useState<CategoryItem[]>(COURSE_CATEGORIES);
+
+  useEffect(() => {
+    let mounted = true;
+    fetch('/api/categories')
+      .then((r) => (r.ok ? r.json() : { items: COURSE_CATEGORIES }))
+      .then((data) => {
+        const items = Array.isArray(data?.items) && data.items.length ? data.items : COURSE_CATEGORIES;
+        if (mounted) setCategories(items);
+      })
+      .catch(() => {
+        if (mounted) setCategories(COURSE_CATEGORIES);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    const controller = new AbortController();
+
+    const fetchCounts = async () => {
+      try {
+        const res = await fetch('/api/courses', { signal: controller.signal });
+        if (!res.ok) {
+          if (mounted) setCourseCounts({});
+          return;
+        }
+        const data = await res.json();
+        const items = Array.isArray(data?.items) ? data.items : [];
+        const categoryNameToId = Object.fromEntries(categories.map((c) => [c.name, c.id]));
+        const counts = items.reduce((acc: Record<string, number>, course: { category?: string }) => {
+          const categoryId = categoryNameToId[String(course.category || '')];
+          if (categoryId) {
+            acc[categoryId] = (acc[categoryId] ?? 0) + 1;
+          }
+          return acc;
+        }, {});
+        if (mounted) setCourseCounts(counts);
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') return;
+        if (mounted) setCourseCounts({});
+      }
+    };
+
+    fetchCounts();
+    return () => {
+      mounted = false;
+      controller.abort();
+    };
+  }, [categories]);
 
   return (
     <div className="min-h-screen bg-[#F8FAFC]">

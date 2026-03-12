@@ -1,6 +1,53 @@
-import mongoose from 'mongoose';
+import mongoose, { HydratedDocument, Model, Schema } from 'mongoose';
 
-const courseSchema = new mongoose.Schema(
+export type CourseLevel = 'Beginner' | 'Intermediate' | 'Advanced';
+export type CourseStatus = 'Draft' | 'Published' | 'Archived';
+
+export interface CourseReview {
+  studentId: string;
+  rating: number;
+  comment: string;
+  createdAt: Date;
+}
+
+export interface CourseSyllabusMaterial {
+  label: string;
+  url: string;
+  name: string;
+  type: string;
+}
+
+export interface Course {
+  title: string;
+  description: string;
+  instructor: string;
+  category: string;
+  level: CourseLevel;
+  duration: number;
+  image: string;
+  syllabusUrl: string;
+  syllabusName: string;
+  syllabusType: string;
+  syllabusMaterials: CourseSyllabusMaterial[];
+  language: string;
+  requirements: string;
+  outcomes: string;
+  price: number;
+  startDate: Date;
+  endDate: Date | null;
+  status: CourseStatus;
+  students: string[];
+  totalStudents: number;
+  rating: number;
+  reviews: CourseReview[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export type CourseDocument = HydratedDocument<Course>;
+type CourseModel = Model<Course>;
+
+const courseSchema = new Schema<Course, CourseModel>(
   {
     title: { type: String, required: true },
     description: { type: String, default: '' },
@@ -47,6 +94,8 @@ const courseSchema = new mongoose.Schema(
   { minimize: false }
 );
 
-const Course = mongoose.models.course || mongoose.model('course', courseSchema);
+const Course =
+  (mongoose.models.course as CourseModel | undefined) ||
+  mongoose.model<Course, CourseModel>('course', courseSchema);
 
 export default Course;

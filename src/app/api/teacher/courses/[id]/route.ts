@@ -58,6 +58,8 @@ export async function PATCH(
   let body: Record<string, unknown> = {};
   let syllabusFile: File | null = null;
   let thumbnailFile: File | null = null;
+  let syllabusFiles: File[] = [];
+  let syllabusLabels: string[] = [];
 
   if (isMultipart) {
     const formData = await req.formData();
@@ -66,10 +68,33 @@ export async function PATCH(
     );
     const syllabusEntry = formData.get('syllabus');
     const thumbnailEntry = formData.get('thumbnail');
+    const syllabusFileEntries = formData.getAll('syllabusFiles');
+    const syllabusLabelEntries = formData.getAll('syllabusLabels');
     syllabusFile = syllabusEntry instanceof File ? syllabusEntry : null;
     thumbnailFile = thumbnailEntry instanceof File ? thumbnailEntry : null;
+    syllabusFiles = syllabusFileEntries.filter((entry): entry is File => entry instanceof File);
+    syllabusLabels = syllabusLabelEntries.filter((entry): entry is string => typeof entry === 'string');
   } else {
     body = await req.json().catch(() => ({}));
+  }
+
+  let requestedSyllabusMaterials: Array<{ label: string; url: string; name: string; type: string }> | null = null;
+  if (typeof body.syllabusMaterials === 'string') {
+    try {
+      const parsed = JSON.parse(body.syllabusMaterials);
+      if (Array.isArray(parsed)) {
+        requestedSyllabusMaterials = parsed
+          .filter((item: any) => item && typeof item.url === 'string' && item.url.trim())
+          .map((item: any) => ({
+            label: String(item.label || item.name || 'Syllabus').trim() || 'Syllabus',
+            url: String(item.url || '').trim(),
+            name: String(item.name || '').trim(),
+            type: String(item.type || '').trim(),
+          }));
+      }
+    } catch {
+      return NextResponse.json({ error: 'Invalid syllabusMaterials payload' }, { status: 400 });
+    }
   }
 
   try {
@@ -99,6 +124,67 @@ export async function PATCH(
     if (body.requirements !== undefined) updates.requirements = body.requirements;
     if (body.outcomes !== undefined) updates.outcomes = body.outcomes;
 
+    let existingSyllabusMaterials = Array.isArray((course as any).syllabusMaterials)
+      ? (course as any).syllabusMaterials
+          .filter((item: any) => item && item.url)
+          .map((item: any) => ({
+            label: String(item.label || 'Syllabus'),
+            url: String(item.url || ''),
+            name: String(item.name || ''),
+            type: String(item.type || ''),
+          }))
+      : [];
+
+    if (!existingSyllabusMaterials.length && (course as any).syllabusUrl) {
+      existingSyllabusMaterials.push({
+        label: String((course as any).syllabusName || 'Syllabus'),
+        url: String((course as any).syllabusUrl),
+        name: String((course as any).syllabusName || ''),
+        type: String((course as any).syllabusType || ''),
+      });
+    }
+
+    if (requestedSyllabusMaterials) {
+      existingSyllabusMaterials = requestedSyllabusMaterials;
+      updates.syllabusMaterials = requestedSyllabusMaterials;
+
+      if (requestedSyllabusMaterials.length === 0) {
+        updates.syllabusUrl = '';
+        updates.syllabusName = '';
+        updates.syllabusType = '';
+      } else {
+        const primary = requestedSyllabusMaterials[0];
+        updates.syllabusUrl = primary.url;
+        updates.syllabusName = primary.name || primary.label;
+        updates.syllabusType = primary.type;
+      }
+    }
+
+    const uploadedSyllabusMaterials: Array<{ label: string; url: string; name: string; type: string }> = [];
+
+    if (syllabusFiles.length > 0) {
+      for (let index = 0; index < syllabusFiles.length; index += 1) {
+        const file = syllabusFiles[index];
+        validateUpload(file, {
+          maxBytes: MAX_SYLLABUS_BYTES,
+          allowedMimes: SYLLABUS_MIME_TYPES,
+          allowedExtensions: SYLLABUS_EXTENSIONS,
+        });
+
+        const upload = await uploadToCloudinary(file, {
+          folder: 'course-syllabi',
+          resourceType: 'raw',
+        });
+
+        uploadedSyllabusMaterials.push({
+          label: syllabusLabels[index]?.trim() || `Material ${existingSyllabusMaterials.length + index + 1}`,
+          url: upload.url,
+          name: upload.name,
+          type: upload.type,
+        });
+      }
+    }
+
     if (syllabusFile) {
       validateUpload(syllabusFile, {
         maxBytes: MAX_SYLLABUS_BYTES,
@@ -112,6 +198,27 @@ export async function PATCH(
       updates.syllabusUrl = syllabusUpload.url;
       updates.syllabusName = syllabusUpload.name;
       updates.syllabusType = syllabusUpload.type;
+
+      if (uploadedSyllabusMaterials.length === 0) {
+        uploadedSyllabusMaterials.push({
+          label: typeof body.syllabusName === 'string' && body.syllabusName.trim() ? body.syllabusName.trim() : 'Syllabus',
+          url: syllabusUpload.url,
+          name: syllabusUpload.name,
+          type: syllabusUpload.type,
+        });
+      }
+    }
+
+    if (uploadedSyllabusMaterials.length > 0) {
+      const mergedSyllabusMaterials = [...existingSyllabusMaterials, ...uploadedSyllabusMaterials];
+      updates.syllabusMaterials = mergedSyllabusMaterials;
+
+      const primarySyllabus = mergedSyllabusMaterials[0];
+      if (primarySyllabus) {
+        updates.syllabusUrl = primarySyllabus.url;
+        updates.syllabusName = primarySyllabus.name || primarySyllabus.label;
+        updates.syllabusType = primarySyllabus.type;
+      }
     }
 
     if (thumbnailFile) {

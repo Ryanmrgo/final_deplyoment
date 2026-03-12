@@ -1,7 +1,6 @@
 "use client";
 
 import { useAuth } from '@/app/components/AuthContext';
-import { useCourses } from '@/app/components/CoursesContext';
 import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardFooter } from '@/app/components/ui/card';
@@ -44,9 +43,8 @@ export function CourseCard({
   enrollmentDate,
   userProgress = 0,
 }: CourseCardProps) {
-  const { isEnrolled: checkEnrolled } = useCourses();
-  const { isSignedIn, userRole } = useAuth(); // ADDED: Get userRole too
-  const enrolled = isEnrolled || checkEnrolled(id);
+  const { isSignedIn } = useAuth();
+  const enrolled = isEnrolled;
   const hasImage = Boolean(image && image.trim());
 
   // FIXED: Determine button text based on enrollment and progress

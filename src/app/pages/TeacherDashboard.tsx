@@ -20,6 +20,15 @@ import { useEffect, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import { useAuth } from '@/app/components/AuthContext';
 
+const DEFAULT_CATEGORIES = [
+  'General',
+  'Web Development',
+  'Data Science',
+  'Design',
+  'Business',
+  'Marketing',
+];
+
 type SyllabusItem = {
   id: string;
   label: string;
@@ -57,6 +66,7 @@ export function TeacherDashboard() {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [publishingId, setPublishingId] = useState<string | null>(null);
+  const [categoryOptions, setCategoryOptions] = useState<string[]>(DEFAULT_CATEGORIES);
 
   const MAX_SYLLABUS_MB = 20;
   const MAX_THUMBNAIL_MB = 5;
@@ -126,6 +136,29 @@ export function TeacherDashboard() {
       router.push(`/dashboard/${userRole}`);
     }
   }, [user, userRole, isLoading, router]);
+
+  useEffect(() => {
+    let mounted = true;
+    fetch('/api/categories')
+      .then((r) => (r.ok ? r.json() : { items: [] }))
+      .then((data) => {
+        const names = Array.isArray(data?.items)
+          ? data.items.map((item: any) => String(item.name || '').trim()).filter(Boolean)
+          : [];
+        const options = names.length ? names : DEFAULT_CATEGORIES;
+        if (mounted) {
+          setCategoryOptions(options);
+          setCreateCategory((prev) => (options.includes(prev) ? prev : options[0]));
+        }
+      })
+      .catch(() => {
+        if (mounted) setCategoryOptions(DEFAULT_CATEGORIES);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (userRole === 'teacher' && user) {
@@ -349,12 +382,18 @@ export function TeacherDashboard() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <Label htmlFor="category">Category</Label>
-                  <Input
+                  <select
                     id="category"
                     value={createCategory}
                     onChange={(e) => setCreateCategory(e.target.value)}
-                    placeholder="e.g. Web Development"
-                  />
+                    className="h-10 w-full rounded-md border border-input bg-input-background px-3 text-sm"
+                  >
+                    {categoryOptions.map((categoryName) => (
+                      <option key={categoryName} value={categoryName}>
+                        {categoryName}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="level">Level</Label>
@@ -504,7 +543,7 @@ export function TeacherDashboard() {
             </div>
 
             <p className="text-xs text-gray-500">
-              New courses start as Draft (hidden from students). Publish when ready.
+              New courses are published by default and immediately visible to students.
             </p>
             {createError && <p className="text-sm text-red-600">{createError}</p>}
           </div>

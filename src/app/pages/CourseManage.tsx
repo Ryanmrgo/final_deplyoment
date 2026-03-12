@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
+import { Badge } from '@/app/components/ui/badge';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
 import { Textarea } from '@/app/components/ui/textarea';
@@ -23,7 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/app/components/ui/select';
-import { ArrowLeft, Save, Eye, EyeOff, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, Save, Eye, EyeOff, Plus, Trash2, MessageSquare, ArrowUp, ArrowDown } from 'lucide-react';
 import { useAuth } from '@/app/components/AuthContext';
 
 interface CourseManageProps {
@@ -41,10 +42,52 @@ type QuizQuestion = {
   points: number;
 };
 
+type LessonItem = {
+  _id: string;
+  title: string;
+  sectionTitle?: string;
+  description?: string;
+  type: 'video' | 'pdf' | 'ppt' | 'text';
+  content?: string;
+  fileUrl?: string;
+  order: number;
+  duration?: number;
+  isPublished: boolean;
+};
+
+type DiscussionItem = {
+  _id: string;
+  studentId: string;
+  question: string;
+  resolved: boolean;
+  replies?: Array<{
+    teacherId: string;
+    message: string;
+    createdAt: string;
+  }>;
+  createdAt: string;
+};
+
+type SyllabusMaterial = {
+  label: string;
+  url: string;
+  name: string;
+  type: string;
+};
+
+type PendingSyllabusItem = {
+  id: string;
+  label: string;
+  file: File | null;
+  error: string | null;
+};
+
 export function CourseManage({ courseId }: CourseManageProps) {
   const { user, userRole, isLoading } = useAuth();
   const router = useRouter();
   const questionInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const syllabusInputRef = useRef<HTMLInputElement | null>(null);
+  const thumbnailInputRef = useRef<HTMLInputElement | null>(null);
   const createQuestion = (): QuizQuestion => ({
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     questionText: '',
@@ -72,6 +115,8 @@ export function CourseManage({ courseId }: CourseManageProps) {
   const [syllabusName, setSyllabusName] = useState('');
   const [thumbnailUrl, setThumbnailUrl] = useState('');
   const [syllabusFile, setSyllabusFile] = useState<File | null>(null);
+  const [syllabusMaterials, setSyllabusMaterials] = useState<SyllabusMaterial[]>([]);
+  const [pendingSyllabusItems, setPendingSyllabusItems] = useState<PendingSyllabusItem[]>([]);
   const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
   const [syllabusError, setSyllabusError] = useState<string | null>(null);
   const [thumbnailError, setThumbnailError] = useState<string | null>(null);
@@ -87,6 +132,23 @@ export function CourseManage({ courseId }: CourseManageProps) {
   const [quizSaving, setQuizSaving] = useState(false);
   const [quizMessage, setQuizMessage] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+
+  const [lessons, setLessons] = useState<LessonItem[]>([]);
+  const [lessonTitle, setLessonTitle] = useState('');
+  const [lessonSectionTitle, setLessonSectionTitle] = useState('');
+  const [lessonDescription, setLessonDescription] = useState('');
+  const [lessonType, setLessonType] = useState<'video' | 'pdf' | 'ppt' | 'text'>('text');
+  const [lessonContent, setLessonContent] = useState('');
+  const [lessonFileUrl, setLessonFileUrl] = useState('');
+  const [lessonDuration, setLessonDuration] = useState('0');
+  const [lessonSaving, setLessonSaving] = useState(false);
+  const [lessonMessage, setLessonMessage] = useState<string | null>(null);
+  const [editingLessonId, setEditingLessonId] = useState<string | null>(null);
+
+  const [discussions, setDiscussions] = useState<DiscussionItem[]>([]);
+  const [discussionLoading, setDiscussionLoading] = useState(false);
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
+  const [discussionMessage, setDiscussionMessage] = useState<string | null>(null);
 
   const MAX_SYLLABUS_MB = 20;
   const MAX_THUMBNAIL_MB = 5;
@@ -129,6 +191,30 @@ export function CourseManage({ courseId }: CourseManageProps) {
         setOutcomes(data.outcomes || '');
         setSyllabusUrl(data.syllabusUrl || '');
         setSyllabusName(data.syllabusName || '');
+        const materials = Array.isArray(data.syllabusMaterials) ? data.syllabusMaterials : [];
+        if (materials.length > 0) {
+          setSyllabusMaterials(
+            materials
+              .filter((item: any) => item?.url)
+              .map((item: any) => ({
+                label: String(item.label || item.name || 'Syllabus'),
+                url: String(item.url || ''),
+                name: String(item.name || ''),
+                type: String(item.type || ''),
+              }))
+          );
+        } else if (data.syllabusUrl) {
+          setSyllabusMaterials([
+            {
+              label: String(data.syllabusName || 'Syllabus'),
+              url: String(data.syllabusUrl),
+              name: String(data.syllabusName || ''),
+              type: String(data.syllabusType || ''),
+            },
+          ]);
+        } else {
+          setSyllabusMaterials([]);
+        }
         setThumbnailUrl(data.image || '');
       })
       .catch(() => {
@@ -153,6 +239,24 @@ export function CourseManage({ courseId }: CourseManageProps) {
       .then((r) => (r.ok ? r.json() : { items: [] }))
       .then((data) => setQuizItems(data.items || []))
       .catch(() => setQuizItems([]));
+  }, [courseId, user, userRole]);
+
+  useEffect(() => {
+    if (!courseId || !user || userRole !== 'teacher') return;
+    fetch(`/api/teacher/courses/${courseId}/lessons`)
+      .then((r) => (r.ok ? r.json() : { items: [] }))
+      .then((data) => setLessons((data.items || []).sort((a: LessonItem, b: LessonItem) => a.order - b.order)))
+      .catch(() => setLessons([]));
+  }, [courseId, user, userRole]);
+
+  useEffect(() => {
+    if (!courseId || !user || userRole !== 'teacher') return;
+    setDiscussionLoading(true);
+    fetch(`/api/courses/${courseId}/discussions`)
+      .then((r) => (r.ok ? r.json() : { items: [] }))
+      .then((data) => setDiscussions(data.items || []))
+      .catch(() => setDiscussions([]))
+      .finally(() => setDiscussionLoading(false));
   }, [courseId, user, userRole]);
 
   const getComputedQuizMarks = () =>
@@ -326,6 +430,169 @@ export function CourseManage({ courseId }: CourseManageProps) {
     }
   };
 
+  const resetLessonForm = () => {
+    setLessonTitle('');
+    setLessonSectionTitle('');
+    setLessonDescription('');
+    setLessonType('text');
+    setLessonContent('');
+    setLessonFileUrl('');
+    setLessonDuration('0');
+    setEditingLessonId(null);
+  };
+
+  const handleSaveLesson = async () => {
+    if (!lessonTitle.trim()) {
+      setLessonMessage('Lesson title is required.');
+      return;
+    }
+
+    setLessonSaving(true);
+    setLessonMessage(null);
+
+    const payload = {
+      title: lessonTitle.trim(),
+      sectionTitle: lessonSectionTitle.trim(),
+      description: lessonDescription.trim(),
+      type: lessonType,
+      content: lessonContent.trim(),
+      fileUrl: lessonFileUrl.trim(),
+      duration: Number(lessonDuration) || 0,
+      isPublished: true,
+    };
+
+    try {
+      const url = editingLessonId
+        ? `/api/teacher/courses/${courseId}/lessons/${editingLessonId}`
+        : `/api/teacher/courses/${courseId}/lessons`;
+      const method = editingLessonId ? 'PATCH' : 'POST';
+
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setLessonMessage(data.error || 'Failed to save lesson.');
+        return;
+      }
+
+      if (editingLessonId && data.lesson) {
+        setLessons((prev) =>
+          prev
+            .map((item) => (item._id === editingLessonId ? data.lesson : item))
+            .sort((a, b) => a.order - b.order)
+        );
+      } else if (data.lesson) {
+        setLessons((prev) => [...prev, data.lesson].sort((a, b) => a.order - b.order));
+      }
+
+      resetLessonForm();
+      setLessonMessage(editingLessonId ? 'Lesson updated successfully.' : 'Lesson added successfully.');
+    } catch {
+      setLessonMessage('Failed to save lesson.');
+    } finally {
+      setLessonSaving(false);
+    }
+  };
+
+  const handleEditLesson = (lesson: LessonItem) => {
+    setEditingLessonId(lesson._id);
+    setLessonTitle(lesson.title || '');
+    setLessonSectionTitle(lesson.sectionTitle || '');
+    setLessonDescription(lesson.description || '');
+    setLessonType(lesson.type || 'text');
+    setLessonContent(lesson.content || '');
+    setLessonFileUrl(lesson.fileUrl || '');
+    setLessonDuration(String(lesson.duration || 0));
+    setLessonMessage(null);
+  };
+
+  const handleDeleteLesson = async (lessonId: string) => {
+    try {
+      const res = await fetch(`/api/teacher/courses/${courseId}/lessons/${lessonId}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setLessonMessage(data.error || 'Failed to delete lesson.');
+        return;
+      }
+
+      setLessons((prev) => prev.filter((lesson) => lesson._id !== lessonId).map((lesson, index) => ({ ...lesson, order: index })));
+      setLessonMessage('Lesson deleted successfully.');
+      if (editingLessonId === lessonId) {
+        resetLessonForm();
+      }
+    } catch {
+      setLessonMessage('Failed to delete lesson.');
+    }
+  };
+
+  const handleReorderLesson = async (index: number, direction: 'up' | 'down') => {
+    const swapIndex = direction === 'up' ? index - 1 : index + 1;
+    if (swapIndex < 0 || swapIndex >= lessons.length) return;
+
+    const reordered = [...lessons];
+    const temp = reordered[index];
+    reordered[index] = reordered[swapIndex];
+    reordered[swapIndex] = temp;
+
+    const withOrder = reordered.map((lesson, idx) => ({ ...lesson, order: idx }));
+    setLessons(withOrder);
+
+    try {
+      const res = await fetch(`/api/teacher/courses/${courseId}/lessons`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lessonOrders: withOrder.map((lesson) => ({ lessonId: lesson._id, order: lesson.order })),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setLessonMessage(data.error || 'Failed to reorder lessons.');
+        return;
+      }
+      setLessons((data.items || withOrder).sort((a: LessonItem, b: LessonItem) => a.order - b.order));
+    } catch {
+      setLessonMessage('Failed to reorder lessons.');
+    }
+  };
+
+  const handleDiscussionReply = async (discussionId: string) => {
+    const message = (replyDrafts[discussionId] || '').trim();
+    if (!message) {
+      setDiscussionMessage('Reply message is required.');
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/teacher/discussions/${discussionId}/replies`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message, resolved: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setDiscussionMessage(data.error || 'Failed to submit reply.');
+        return;
+      }
+
+      setDiscussions((prev) =>
+        prev.map((discussion) =>
+          discussion._id === discussionId ? data.discussion : discussion
+        )
+      );
+      setReplyDrafts((prev) => ({ ...prev, [discussionId]: '' }));
+      setDiscussionMessage('Reply posted successfully.');
+    } catch {
+      setDiscussionMessage('Failed to submit reply.');
+    }
+  };
+
   const validateSyllabusFile = (file: File) => {
     const ext = `.${file.name.split('.').pop() || ''}`.toLowerCase();
     if (!SYLLABUS_EXTS.includes(ext)) return 'Only PDF or PPTX/PPT files are allowed.';
@@ -354,6 +621,64 @@ export function CourseManage({ courseId }: CourseManageProps) {
     setSyllabusFile(error ? null : file);
   };
 
+  const addPendingSyllabusItem = () => {
+    setPendingSyllabusItems((prev) => [
+      ...prev,
+      {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        label: '',
+        file: null,
+        error: null,
+      },
+    ]);
+  };
+
+  const removePendingSyllabusItem = (id: string) => {
+    setPendingSyllabusItems((prev) => prev.filter((item) => item.id !== id));
+  };
+
+  const updatePendingSyllabusLabel = (id: string, label: string) => {
+    setPendingSyllabusItems((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, label } : item))
+    );
+  };
+
+  const updatePendingSyllabusFile = (id: string, file: File | null) => {
+    if (!file) {
+      setPendingSyllabusItems((prev) =>
+        prev.map((item) => (item.id === id ? { ...item, file: null, error: null } : item))
+      );
+      return;
+    }
+
+    const error = validateSyllabusFile(file);
+    setPendingSyllabusItems((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, file: error ? null : file, error } : item))
+    );
+  };
+
+  const moveSyllabusMaterial = (index: number, direction: 'up' | 'down') => {
+    setSyllabusMaterials((prev) => {
+      const swapIndex = direction === 'up' ? index - 1 : index + 1;
+      if (swapIndex < 0 || swapIndex >= prev.length) return prev;
+      const next = [...prev];
+      const temp = next[index];
+      next[index] = next[swapIndex];
+      next[swapIndex] = temp;
+      return next;
+    });
+  };
+
+  const removeSyllabusMaterial = (index: number) => {
+    setSyllabusMaterials((prev) => prev.filter((_, idx) => idx !== index));
+  };
+
+  const updateSyllabusMaterialLabel = (index: number, label: string) => {
+    setSyllabusMaterials((prev) =>
+      prev.map((item, idx) => (idx === index ? { ...item, label } : item))
+    );
+  };
+
   const handleThumbnailChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0] || null;
     if (!file) {
@@ -372,7 +697,8 @@ export function CourseManage({ courseId }: CourseManageProps) {
       setSaveMessage('Title and description are required.');
       return;
     }
-    if (syllabusError || thumbnailError) {
+    const pendingSyllabusErrors = pendingSyllabusItems.some((item) => item.error);
+    if (syllabusError || thumbnailError || pendingSyllabusErrors) {
       return;
     }
     setSaving(true);
@@ -389,7 +715,13 @@ export function CourseManage({ courseId }: CourseManageProps) {
       formData.append('language', language.trim() || 'English');
       formData.append('requirements', requirements.trim());
       formData.append('outcomes', outcomes.trim());
+      formData.append('syllabusMaterials', JSON.stringify(syllabusMaterials));
       if (syllabusFile) formData.append('syllabus', syllabusFile);
+      pendingSyllabusItems.forEach((item, index) => {
+        if (!item.file) return;
+        formData.append('syllabusFiles', item.file);
+        formData.append('syllabusLabels', item.label.trim() || `Material ${index + 1}`);
+      });
       if (thumbnailFile) formData.append('thumbnail', thumbnailFile);
 
       const res = await fetch(`/api/teacher/courses/${courseId}`, {
@@ -417,12 +749,28 @@ export function CourseManage({ courseId }: CourseManageProps) {
                 image: updatedCourse.image || prev.image,
                 syllabusUrl: updatedCourse.syllabusUrl || prev.syllabusUrl,
                 syllabusName: updatedCourse.syllabusName || prev.syllabusName,
+                syllabusMaterials: updatedCourse.syllabusMaterials || prev.syllabusMaterials,
               }
             : prev
         );
         if (updatedCourse.syllabusUrl) {
           setSyllabusUrl(updatedCourse.syllabusUrl);
           setSyllabusName(updatedCourse.syllabusName || syllabusName);
+        } else if (!syllabusMaterials.length) {
+          setSyllabusUrl('');
+          setSyllabusName('');
+        }
+        if (Array.isArray(updatedCourse.syllabusMaterials)) {
+          setSyllabusMaterials(
+            updatedCourse.syllabusMaterials
+              .filter((item: any) => item?.url)
+              .map((item: any) => ({
+                label: String(item.label || item.name || 'Syllabus'),
+                url: String(item.url || ''),
+                name: String(item.name || ''),
+                type: String(item.type || ''),
+              }))
+          );
         }
         if (updatedCourse.image) {
           setThumbnailUrl(updatedCourse.image);
@@ -430,6 +778,9 @@ export function CourseManage({ courseId }: CourseManageProps) {
         if (syllabusFile) {
           setSyllabusFile(null);
           setSyllabusError(null);
+        }
+        if (pendingSyllabusItems.length) {
+          setPendingSyllabusItems([]);
         }
         if (thumbnailFile) {
           setThumbnailFile(null);
@@ -601,44 +952,222 @@ export function CourseManage({ courseId }: CourseManageProps) {
               <CardHeader>
                 <CardTitle className="text-xl text-gray-900">Media & syllabus</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <Label htmlFor="syllabus">Syllabus (PDF or PPTX)</Label>
-                  <Input
-                    id="syllabus"
-                    type="file"
-                    accept=".pdf,.ppt,.pptx,application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation"
-                    onChange={handleSyllabusChange}
-                    className="mt-1"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">Max file size: {MAX_SYLLABUS_MB}MB</p>
-                  {syllabusName && syllabusUrl && (
-                    <p className="text-xs text-gray-600 mt-1">
-                      Current: <a className="underline" href={syllabusUrl} target="_blank" rel="noreferrer">{syllabusName}</a>
-                    </p>
-                  )}
-                  {syllabusError && <p className="text-sm text-red-600">{syllabusError}</p>}
-                </div>
-                <div>
-                  <Label htmlFor="thumbnail">Course Thumbnail</Label>
-                  <Input
-                    id="thumbnail"
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp"
-                    onChange={handleThumbnailChange}
-                    className="mt-1"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">Recommended: 1200x675, max {MAX_THUMBNAIL_MB}MB</p>
-                  {(thumbnailPreviewUrl || thumbnailUrl) && (
-                    <div className="mt-3">
-                      <img
-                        src={thumbnailPreviewUrl || thumbnailUrl}
-                        alt="Course thumbnail preview"
-                        className="h-36 w-full max-w-sm rounded-md object-cover border"
-                      />
+              <CardContent className="space-y-5">
+                <p className="text-sm text-gray-600">
+                  Upload your syllabus and thumbnail here. Changes are applied when you click <span className="font-medium">Save Changes</span>.
+                </p>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <div className="rounded-lg border bg-gray-50/70 p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <Label htmlFor="syllabus" className="text-gray-900">Primary Syllabus</Label>
+                        <p className="text-xs text-gray-500 mt-1">PDF or PPTX, up to {MAX_SYLLABUS_MB}MB.</p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => syllabusInputRef.current?.click()}
+                      >
+                        Browse
+                      </Button>
                     </div>
-                  )}
-                  {thumbnailError && <p className="text-sm text-red-600">{thumbnailError}</p>}
+
+                    <Input
+                      ref={syllabusInputRef}
+                      id="syllabus"
+                      type="file"
+                      accept=".pdf,.ppt,.pptx,application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                      onChange={handleSyllabusChange}
+                      className="hidden"
+                    />
+
+                    <div className="rounded-md border bg-white px-3 py-2">
+                      <p className="text-xs text-gray-500">Selected file</p>
+                      <p className="text-sm font-medium text-gray-900 truncate">
+                        {syllabusFile?.name || syllabusName || 'No file selected'}
+                      </p>
+                    </div>
+
+                    {syllabusName && syllabusUrl ? (
+                      <p className="text-xs text-gray-600">
+                        Current file:{' '}
+                        <a className="underline text-[#1E3A8A]" href={syllabusUrl} target="_blank" rel="noreferrer">
+                          View
+                        </a>
+                      </p>
+                    ) : null}
+                    {syllabusError ? <p className="text-sm text-red-600">{syllabusError}</p> : null}
+
+                    {syllabusMaterials.length > 0 ? (
+                      <div className="space-y-2 pt-2">
+                        <p className="text-xs font-medium text-gray-700">Existing syllabus materials</p>
+                        <div className="space-y-1.5">
+                          {syllabusMaterials.map((material, idx) => (
+                            <div key={`${material.url}-${idx}`} className="rounded border bg-white px-3 py-2">
+                              <div className="flex flex-wrap items-start justify-between gap-2">
+                                <div className="flex-1 min-w-[220px] space-y-1.5">
+                                  <Label className="text-xs text-gray-600">Label</Label>
+                                  <Input
+                                    value={material.label || material.name || ''}
+                                    onChange={(e) => updateSyllabusMaterialLabel(idx, e.target.value)}
+                                    placeholder={`Material ${idx + 1}`}
+                                    className="h-9"
+                                  />
+                                  <a
+                                    href={material.url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-block text-xs text-[#1E3A8A] hover:underline"
+                                  >
+                                    View file
+                                  </a>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => moveSyllabusMaterial(idx, 'up')}
+                                    disabled={idx === 0}
+                                  >
+                                    <ArrowUp className="w-4 h-4" />
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => moveSyllabusMaterial(idx, 'down')}
+                                    disabled={idx === syllabusMaterials.length - 1}
+                                  >
+                                    <ArrowDown className="w-4 h-4" />
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="text-red-600 border-red-300"
+                                    onClick={() => removeSyllabusMaterial(idx)}
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <div className="rounded-md border bg-white p-3 space-y-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-medium text-gray-900">Add more syllabus files</p>
+                        <Button type="button" variant="outline" size="sm" onClick={addPendingSyllabusItem}>
+                          <Plus className="w-4 h-4 mr-1" />
+                          Add
+                        </Button>
+                      </div>
+
+                      {pendingSyllabusItems.length === 0 ? (
+                        <p className="text-xs text-gray-500">No new materials selected.</p>
+                      ) : (
+                        <div className="space-y-3">
+                          {pendingSyllabusItems.map((item, index) => {
+                            const inputId = `extra-syllabus-${item.id}`;
+                            return (
+                              <div key={item.id} className="rounded border p-2 space-y-2">
+                                <div className="flex items-center justify-between gap-2">
+                                  <Label htmlFor={inputId} className="text-xs text-gray-700">
+                                    Additional Material {index + 1}
+                                  </Label>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-red-600 hover:text-red-700"
+                                    onClick={() => removePendingSyllabusItem(item.id)}
+                                  >
+                                    Remove
+                                  </Button>
+                                </div>
+
+                                <Input
+                                  value={item.label}
+                                  onChange={(e) => updatePendingSyllabusLabel(item.id, e.target.value)}
+                                  placeholder="Label (e.g. Week 1 Slides)"
+                                />
+
+                                <div className="flex items-center gap-2">
+                                  <Input
+                                    id={inputId}
+                                    type="file"
+                                    accept=".pdf,.ppt,.pptx,application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                                    onChange={(e) => updatePendingSyllabusFile(item.id, e.target.files?.[0] || null)}
+                                    className="hidden"
+                                  />
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => (document.getElementById(inputId) as HTMLInputElement | null)?.click()}
+                                  >
+                                    Browse
+                                  </Button>
+                                  <p className="text-xs text-gray-600 truncate">
+                                    {item.file?.name || 'No file selected'}
+                                  </p>
+                                </div>
+                                {item.error ? <p className="text-xs text-red-600">{item.error}</p> : null}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border bg-gray-50/70 p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <Label htmlFor="thumbnail" className="text-gray-900">Course Thumbnail</Label>
+                        <p className="text-xs text-gray-500 mt-1">PNG/JPG/WEBP, up to {MAX_THUMBNAIL_MB}MB.</p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => thumbnailInputRef.current?.click()}
+                      >
+                        Browse
+                      </Button>
+                    </div>
+
+                    <Input
+                      ref={thumbnailInputRef}
+                      id="thumbnail"
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      onChange={handleThumbnailChange}
+                      className="hidden"
+                    />
+
+                    <div className="rounded-md border bg-white px-3 py-2">
+                      <p className="text-xs text-gray-500">Selected image</p>
+                      <p className="text-sm font-medium text-gray-900 truncate">
+                        {thumbnailFile?.name || (thumbnailUrl ? 'Current thumbnail' : 'No image selected')}
+                      </p>
+                    </div>
+
+                    {(thumbnailPreviewUrl || thumbnailUrl) ? (
+                      <div className="mt-1">
+                        <img
+                          src={thumbnailPreviewUrl || thumbnailUrl}
+                          alt="Course thumbnail preview"
+                          className="h-36 w-full rounded-md object-cover border"
+                        />
+                      </div>
+                    ) : null}
+                    {thumbnailError ? <p className="text-sm text-red-600">{thumbnailError}</p> : null}
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -886,6 +1415,244 @@ export function CourseManage({ courseId }: CourseManageProps) {
                     </div>
                   )}
                 </div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-white">
+              <CardHeader>
+                <CardTitle className="text-xl text-gray-900">Lessons</CardTitle>
+                <p className="text-sm text-gray-600">Add, update, remove, and reorder course lessons.</p>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="rounded-lg border p-4 space-y-3">
+                  <h3 className="font-semibold text-gray-900">
+                    {editingLessonId ? 'Edit Lesson' : 'Add Lesson'}
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label>Lesson Title</Label>
+                      <Input
+                        value={lessonTitle}
+                        onChange={(e) => setLessonTitle(e.target.value)}
+                        placeholder="e.g. Intro to Components"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Section Title</Label>
+                      <Input
+                        value={lessonSectionTitle}
+                        onChange={(e) => setLessonSectionTitle(e.target.value)}
+                        placeholder="e.g. Module 1"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Description</Label>
+                    <Textarea
+                      value={lessonDescription}
+                      onChange={(e) => setLessonDescription(e.target.value)}
+                      placeholder="Lesson summary"
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="space-y-1.5">
+                      <Label>Type</Label>
+                      <Select
+                        value={lessonType}
+                        onValueChange={(value: 'video' | 'pdf' | 'ppt' | 'text') => setLessonType(value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="text">Text</SelectItem>
+                          <SelectItem value="video">Video</SelectItem>
+                          <SelectItem value="pdf">PDF</SelectItem>
+                          <SelectItem value="ppt">PPT</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5 md:col-span-2">
+                      <Label>{lessonType === 'video' ? 'Video URL' : lessonType === 'text' ? 'Text Content' : 'Material URL'}</Label>
+                      {lessonType === 'text' ? (
+                        <Textarea
+                          value={lessonContent}
+                          onChange={(e) => setLessonContent(e.target.value)}
+                          placeholder="Add lesson notes or explanation text"
+                          rows={4}
+                        />
+                      ) : (
+                        <div className="rounded-lg border bg-gray-50/70 p-3 space-y-2">
+                          <div className="flex items-center gap-2">
+                            <Input
+                              value={lessonType === 'video' ? lessonContent : lessonFileUrl}
+                              onChange={(e) => {
+                                if (lessonType === 'video') {
+                                  setLessonContent(e.target.value);
+                                } else {
+                                  setLessonFileUrl(e.target.value);
+                                }
+                              }}
+                              placeholder="https://..."
+                              className="bg-white"
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() => {
+                                const url = (lessonType === 'video' ? lessonContent : lessonFileUrl).trim();
+                                if (url) window.open(url, '_blank', 'noopener,noreferrer');
+                              }}
+                              disabled={!(lessonType === 'video' ? lessonContent : lessonFileUrl).trim()}
+                            >
+                              Browse
+                            </Button>
+                          </div>
+                          <p className="text-xs text-gray-500">
+                            {lessonType === 'video'
+                              ? 'Paste a public video URL (YouTube, Vimeo, etc.) and click Browse to preview it.'
+                              : 'Paste a public PDF/PPT link and click Browse to verify the file opens.'}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Duration (minutes)</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={lessonDuration}
+                      onChange={(e) => setLessonDuration(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      onClick={handleSaveLesson}
+                      disabled={lessonSaving}
+                      className="bg-[#1E3A8A] hover:bg-[#1E3A8A]/90"
+                    >
+                      {lessonSaving ? 'Saving...' : editingLessonId ? 'Update Lesson' : 'Add Lesson'}
+                    </Button>
+                    {editingLessonId ? (
+                      <Button variant="outline" onClick={resetLessonForm}>
+                        Cancel Edit
+                      </Button>
+                    ) : null}
+                  </div>
+                  {lessonMessage ? <p className="text-sm text-gray-700">{lessonMessage}</p> : null}
+                </div>
+
+                <div className="space-y-2">
+                  {lessons.length === 0 ? (
+                    <p className="text-sm text-gray-600">No lessons yet.</p>
+                  ) : (
+                    lessons
+                      .sort((a, b) => a.order - b.order)
+                      .map((lesson, index) => (
+                        <div key={lesson._id} className="rounded-md border p-3">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <p className="font-medium text-gray-900">
+                                {index + 1}. {lesson.title}
+                              </p>
+                              <p className="text-xs text-gray-600">
+                                {lesson.sectionTitle || 'General'} • {lesson.type.toUpperCase()} • {lesson.duration || 0} min
+                              </p>
+                              {lesson.description ? (
+                                <p className="text-sm text-gray-700 mt-1">{lesson.description}</p>
+                              ) : null}
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleReorderLesson(index, 'up')}
+                                disabled={index === 0}
+                              >
+                                <ArrowUp className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleReorderLesson(index, 'down')}
+                                disabled={index === lessons.length - 1}
+                              >
+                                <ArrowDown className="w-4 h-4" />
+                              </Button>
+                              <Button size="sm" variant="outline" onClick={() => handleEditLesson(lesson)}>
+                                Edit
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="border-red-300 text-red-600"
+                                onClick={() => handleDeleteLesson(lesson._id)}
+                              >
+                                Delete
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-white">
+              <CardHeader>
+                <CardTitle className="text-xl text-gray-900 flex items-center gap-2">
+                  <MessageSquare className="w-5 h-5" />
+                  Discussions
+                </CardTitle>
+                <p className="text-sm text-gray-600">Reply to student questions for this course.</p>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {discussionLoading ? <p className="text-sm text-gray-600">Loading discussions...</p> : null}
+                {!discussionLoading && discussions.length === 0 ? (
+                  <p className="text-sm text-gray-600">No discussion questions yet.</p>
+                ) : null}
+                {discussions.map((discussion) => (
+                  <div key={discussion._id} className="rounded-md border p-3 space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="font-medium text-gray-900">{discussion.question || (discussion as any).content || 'Question'}</p>
+                      <Badge className={discussion.resolved ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}>
+                        {discussion.resolved ? 'Resolved' : 'Open'}
+                      </Badge>
+                    </div>
+
+                    {(discussion.replies || []).length > 0 ? (
+                      <div className="space-y-2">
+                        {(discussion.replies || []).map((reply, replyIndex) => (
+                          <div key={`${discussion._id}-reply-${replyIndex}`} className="rounded bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                            {reply.message || (reply as any).content}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+
+                    <div className="flex flex-col gap-2 md:flex-row">
+                      <Input
+                        value={replyDrafts[discussion._id] || ''}
+                        onChange={(e) =>
+                          setReplyDrafts((prev) => ({
+                            ...prev,
+                            [discussion._id]: e.target.value,
+                          }))
+                        }
+                        placeholder="Write a reply..."
+                      />
+                      <Button
+                        className="bg-[#F59E0B] hover:bg-[#F59E0B]/90 text-white"
+                        onClick={() => handleDiscussionReply(discussion._id)}
+                      >
+                        Reply & Resolve
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+                {discussionMessage ? <p className="text-sm text-gray-700">{discussionMessage}</p> : null}
               </CardContent>
             </Card>
           </div>

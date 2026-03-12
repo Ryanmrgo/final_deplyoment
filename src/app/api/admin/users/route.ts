@@ -1,12 +1,14 @@
-import { auth } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
 import connectDB from '@/config/db';
 import User from '@/models/User';
+import { getEffectiveRole } from '@/lib/auth';
 
 export async function GET() {
-  const { sessionClaims } = await auth();
+  const { userId, role } = await getEffectiveRole();
 
-  const role = (sessionClaims?.publicMetadata as any)?.role as string | undefined;
+  if (!userId) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
 
   if (role !== 'admin') {
     return NextResponse.json({ error: 'Admin role required' }, { status: 403 });

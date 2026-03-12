@@ -1,13 +1,14 @@
 "use client";
 
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/app/components/ui/avatar';
 import { Star } from 'lucide-react';
 import { useAuth } from '@/app/components/AuthContext';
-import { useCourses } from '@/app/components/CoursesContext';
+import { useRouter } from 'next/navigation';
 
 interface ReviewItem {
   id: string;
@@ -19,8 +20,39 @@ interface ReviewItem {
 }
 
 export function TeacherReviews() {
-  const { userRole } = useAuth();
-  const { allCourses } = useCourses();
+  const { userRole, user, isLoading } = useAuth();
+  const router = useRouter();
+  const [reviews, setReviews] = useState<ReviewItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!isLoading && !user) {
+      router.push('/auth/sign-in');
+    }
+    if (!isLoading && user && userRole && userRole !== 'teacher') {
+      router.push(`/dashboard/${userRole}`);
+    }
+  }, [isLoading, user, userRole, router]);
+
+  useEffect(() => {
+    if (isLoading || !user || userRole !== 'teacher') return;
+    setLoading(true);
+    fetch('/api/teacher/reviews')
+      .then((response) => (response.ok ? response.json() : { items: [] }))
+      .then((data) => {
+        const mapped: ReviewItem[] = (data.items || []).map((item: any) => ({
+          id: String(item.id),
+          courseTitle: String(item.courseTitle || 'Course'),
+          student: String(item.student || 'Student'),
+          rating: Math.max(0, Math.min(5, Number(item.rating) || 0)),
+          comment: String(item.comment || ''),
+          date: item.date ? new Date(item.date).toLocaleDateString() : '',
+        }));
+        setReviews(mapped);
+      })
+      .catch(() => setReviews([]))
+      .finally(() => setLoading(false));
+  }, [isLoading, user, userRole]);
 
   if (userRole !== 'teacher') {
     return (
@@ -35,17 +67,6 @@ export function TeacherReviews() {
       </div>
     );
   }
-
-  const reviews: ReviewItem[] = allCourses.flatMap((course) =>
-    (course.reviews ?? []).map((review) => ({
-      id: review.id,
-      courseTitle: course.title,
-      student: review.student,
-      rating: review.rating,
-      comment: review.comment,
-      date: review.date,
-    }))
-  );
 
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
@@ -63,7 +84,8 @@ export function TeacherReviews() {
             <CardTitle className="text-xl text-gray-900">All Reviews</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {reviews.length === 0 ? (
+            {loading ? <p className="text-gray-600">Loading reviews...</p> : null}
+            {!loading && reviews.length === 0 ? (
               <p className="text-gray-600">No reviews yet.</p>
             ) : (
               reviews.map((review) => (

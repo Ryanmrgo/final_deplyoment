@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
@@ -9,54 +10,68 @@ import { Avatar, AvatarFallback } from '@/app/components/ui/avatar';
 import { useAuth } from '@/app/components/AuthContext';
 
 interface StudentEnrollment {
-  id: string;
-  name: string;
-  email: string;
+  enrollmentId: string;
+  studentId: string;
+  studentName: string;
+  studentEmail: string;
   initials: string;
+  courseId: string;
   courseTitle: string;
-  status: 'pending' | 'approved';
+  enrollmentStatus: 'Active' | 'Completed' | 'Dropped';
   enrolledAt: string;
+  progress: number;
+  quizAverageScore: number;
+  latestQuizScore: number;
+  quizAttempts: number;
 }
 
-const seedStudents: StudentEnrollment[] = [
-  {
-    id: 's-1',
-    name: 'Fatima Hassan',
-    email: 'fatima@example.com',
-    initials: 'FH',
-    courseTitle: 'JavaScript Essentials',
-    status: 'pending',
-    enrolledAt: '2026-02-05',
-  },
-  {
-    id: 's-2',
-    name: 'Ahmed Said',
-    email: 'ahmed@example.com',
-    initials: 'AS',
-    courseTitle: 'UI/UX Design Fundamentals',
-    status: 'approved',
-    enrolledAt: '2026-02-01',
-  },
-  {
-    id: 's-3',
-    name: 'Omar Khalil',
-    email: 'omar@example.com',
-    initials: 'OK',
-    courseTitle: 'Data Science with Python',
-    status: 'pending',
-    enrolledAt: '2026-02-03',
-  },
-];
-
 export function ManageStudents() {
-  const { userRole } = useAuth();
-  const [students, setStudents] = useState<StudentEnrollment[]>(seedStudents);
+  const { userRole, user, isLoading } = useAuth();
+  const router = useRouter();
+  const [students, setStudents] = useState<StudentEnrollment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const pendingCount = useMemo(
-    () => students.filter((student) => student.status === 'pending').length,
+    () => students.filter((student) => student.progress < 50).length,
     [students]
   );
+
+  useEffect(() => {
+    if (!isLoading && !user) {
+      router.push('/auth/sign-in');
+      return;
+    }
+    if (!isLoading && user && userRole && userRole !== 'teacher') {
+      router.push(`/dashboard/${userRole}`);
+      return;
+    }
+  }, [isLoading, user, userRole, router]);
+
+  useEffect(() => {
+    if (isLoading || !user || userRole !== 'teacher') return;
+
+    setLoading(true);
+    setError(null);
+
+    fetch('/api/teacher/students')
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to fetch students');
+        }
+        return data;
+      })
+      .then((data) => {
+        setStudents(data.items || []);
+      })
+      .catch((fetchError: unknown) => {
+        const message = fetchError instanceof Error ? fetchError.message : 'Failed to fetch students';
+        setError(message);
+      })
+      .finally(() => setLoading(false));
+  }, [isLoading, user, userRole]);
 
   if (userRole !== 'teacher') {
     return (
@@ -80,16 +95,30 @@ export function ManageStudents() {
             <h1 className="text-3xl font-bold text-gray-900">Manage Students</h1>
             <p className="text-gray-600">Approve enrollments and keep track of your learners.</p>
           </div>
-          <Badge className="bg-[#F59E0B] text-white">{pendingCount} pending</Badge>
+          <Badge className="bg-[#F59E0B] text-white">{pendingCount} at-risk</Badge>
         </div>
+
+        {error && (
+          <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {error}
+          </div>
+        )}
 
         <Card className="bg-white">
           <CardHeader>
-            <CardTitle className="text-xl text-gray-900">Enrollment Requests</CardTitle>
+            <CardTitle className="text-xl text-gray-900">Course Students</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {loading ? (
+              <div className="text-sm text-gray-600">Loading students...</div>
+            ) : null}
+
+            {!loading && students.length === 0 ? (
+              <div className="text-sm text-gray-600">No students enrolled in your courses yet.</div>
+            ) : null}
+
             {students.map((student) => (
-              <div key={student.id} className="border rounded-lg p-4">
+              <div key={student.enrollmentId} className="border rounded-lg p-4">
                 <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                   <div className="flex items-center gap-3">
                     <Avatar className="h-10 w-10">
@@ -98,54 +127,47 @@ export function ManageStudents() {
                       </AvatarFallback>
                     </Avatar>
                     <div>
-                      <p className="font-semibold text-gray-900">{student.name}</p>
-                      <p className="text-sm text-gray-600">{student.email}</p>
+                      <p className="font-semibold text-gray-900">{student.studentName}</p>
+                      <p className="text-sm text-gray-600">{student.studentEmail}</p>
                     </div>
                   </div>
                   <div className="text-sm text-gray-600">
                     <p>Course: <span className="font-medium text-gray-900">{student.courseTitle}</span></p>
-                    <p>Enrolled: {student.enrolledAt}</p>
+                    <p>
+                      Enrolled:{' '}
+                      {student.enrolledAt
+                        ? new Date(student.enrolledAt).toLocaleDateString()
+                        : 'N/A'}
+                    </p>
+                    <p>Progress: <span className="font-medium text-gray-900">{student.progress}%</span></p>
+                    <p>Quiz Avg: <span className="font-medium text-gray-900">{student.quizAverageScore}%</span></p>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {student.status === 'pending' ? (
-                      <Button
-                        className="bg-[#1E3A8A] hover:bg-[#1E3A8A]/90 text-white"
-                        onClick={() =>
-                          setStudents((prev) =>
-                            prev.map((item) =>
-                              item.id === student.id ? { ...item, status: 'approved' } : item
-                            )
-                          )
-                        }
-                      >
-                        Approve
-                      </Button>
-                    ) : (
-                      <Badge className="bg-green-100 text-green-700">Approved</Badge>
-                    )}
-                    <Button
-                      variant="outline"
-                      className="border-red-300 text-red-600 hover:bg-red-50"
-                      onClick={() => setStudents((prev) => prev.filter((item) => item.id !== student.id))}
-                    >
-                      Remove
-                    </Button>
+                    <Badge className="bg-[#1E3A8A]/10 text-[#1E3A8A] border border-[#1E3A8A]/20">
+                      {student.enrollmentStatus}
+                    </Badge>
                     <Button
                       variant="outline"
                       className="border-[#1E3A8A] text-[#1E3A8A]"
-                      onClick={() => setExpandedId((prev) => (prev === student.id ? null : student.id))}
+                      onClick={() =>
+                        setExpandedId((prev) =>
+                          prev === student.enrollmentId ? null : student.enrollmentId
+                        )
+                      }
                     >
                       View Profile
                     </Button>
                   </div>
                 </div>
 
-                {expandedId === student.id ? (
+                {expandedId === student.enrollmentId ? (
                   <div className="mt-4 rounded-lg bg-gray-50 p-4 text-sm text-gray-700">
                     <p className="font-semibold text-gray-900 mb-2">Student Profile</p>
                     <p>Role: Student</p>
-                    <p>Courses enrolled: 1</p>
-                    <p>Notes: Reach out for onboarding and course expectations.</p>
+                    <p>Course: {student.courseTitle}</p>
+                    <p>Progress: {student.progress}%</p>
+                    <p>Latest Quiz Score: {student.latestQuizScore}%</p>
+                    <p>Quiz Attempts: {student.quizAttempts}</p>
                   </div>
                 ) : null}
               </div>

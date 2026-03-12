@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card';
@@ -8,116 +8,107 @@ import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
 import { Textarea } from '@/app/components/ui/textarea';
-import { categories } from '@/app/data/mockData';
 import { useAuth } from '@/app/components/AuthContext';
-import { useCourses, type Course, type SyllabusSection, type LessonAttachment, type Assignment } from '@/app/components/CoursesContext';
+
+const DEFAULT_CATEGORIES = [
+  'General',
+  'Web Development',
+  'Data Science',
+  'Design',
+  'Business',
+  'Marketing',
+];
 
 export function CreateCourse() {
   const router = useRouter();
-  const { userRole } = useAuth();
-  const { addCourse } = useCourses();
+  const { userRole, user, isLoading } = useAuth();
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [categoryId, setCategoryId] = useState(categories[0]?.id ?? '');
-  const [level, setLevel] = useState('Beginner');
-  const [duration, setDuration] = useState('4 weeks');
+  const [categoryOptions, setCategoryOptions] = useState<string[]>(DEFAULT_CATEGORIES);
+  const [category, setCategory] = useState(DEFAULT_CATEGORIES[0]);
+  const [level, setLevel] = useState<'Beginner' | 'Intermediate' | 'Advanced'>('Beginner');
+  const [duration, setDuration] = useState('0');
   const [image, setImage] = useState('');
-  const [imageName, setImageName] = useState('');
-  const [isPublished, setIsPublished] = useState(false);
-  const [syllabus, setSyllabus] = useState<SyllabusSection[]>([
-    {
-      id: '1',
-      title: 'Getting Started',
-      lessons: [{ title: 'Introduction', files: [] as LessonAttachment[] }],
-    },
-  ]);
-  const [learningOutcomes, setLearningOutcomes] = useState<string[]>(['']);
-  const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [syllabusUrl, setSyllabusUrl] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const categoryOptions = useMemo(() => categories, []);
-
-  const handleImageFile = (file: File | null) => {
-    if (!file) {
+  useEffect(() => {
+    if (!isLoading && !user) {
+      router.push('/auth/sign-in');
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        setImage(reader.result);
-        setImageName(file.name);
-      }
+    if (!isLoading && user && userRole && userRole !== 'teacher') {
+      router.push(`/dashboard/${userRole}`);
+    }
+  }, [isLoading, user, userRole, router]);
+
+  useEffect(() => {
+    let mounted = true;
+    fetch('/api/categories')
+      .then((r) => (r.ok ? r.json() : { items: [] }))
+      .then((data) => {
+        const names = Array.isArray(data?.items)
+          ? data.items.map((item: any) => String(item.name || '').trim()).filter(Boolean)
+          : [];
+        const options = names.length ? names : DEFAULT_CATEGORIES;
+        if (mounted) {
+          setCategoryOptions(options);
+          setCategory((prev) => (options.includes(prev) ? prev : options[0]));
+        }
+      })
+      .catch(() => {
+        if (mounted) setCategoryOptions(DEFAULT_CATEGORIES);
+      });
+
+    return () => {
+      mounted = false;
     };
-    reader.readAsDataURL(file);
-  };
+  }, []);
 
-  const handleLessonFiles = (files: FileList | null, sectionIndex: number, lessonIndex: number) => {
-    if (!files || files.length === 0) {
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+
+    if (!title.trim() || !description.trim()) {
+      setError('Title and description are required.');
       return;
     }
-    Array.from(files).forEach((file) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        if (typeof reader.result !== 'string') {
-          return;
-        }
-        const attachment = {
-          name: file.name,
-          type: file.type || 'application/octet-stream',
-          dataUrl: reader.result,
-        };
-        setSyllabus((prev) =>
-          prev.map((section, sIndex) => {
-            if (sIndex !== sectionIndex) {
-              return section;
-            }
-            const updatedLessons = section.lessons.map((lesson, lIndex) => {
-              if (lIndex !== lessonIndex) {
-                return lesson;
-              }
-              const current = typeof lesson === 'string' ? { title: lesson, files: [] } : lesson;
-              return {
-                ...current,
-                files: [...(current.files ?? []), attachment],
-              };
-            });
-            return { ...section, lessons: updatedLessons };
-          })
-        );
-      };
-      reader.readAsDataURL(file);
-    });
-  };
 
-  const handleAssignmentFiles = (files: FileList | null, assignmentIndex: number) => {
-    if (!files || files.length === 0) {
-      return;
+    setSaving(true);
+    setError(null);
+
+    try {
+      const res = await fetch('/api/teacher/courses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: title.trim(),
+          description: description.trim(),
+          category,
+          level,
+          duration: Number(duration) || 0,
+          image: image.trim(),
+          syllabusUrl: syllabusUrl.trim(),
+          syllabusName: syllabusUrl.trim() ? 'Syllabus Link' : '',
+          syllabusType: syllabusUrl.trim() ? 'url' : '',
+          status: 'Published',
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Failed to create course.');
+        return;
+      }
+
+      const courseId = data.course?._id || data.course?.id;
+      router.push(courseId ? `/dashboard/teacher/course/${courseId}` : '/dashboard/teacher');
+    } catch {
+      setError('Failed to create course.');
+    } finally {
+      setSaving(false);
     }
-    Array.from(files).forEach((file) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        if (typeof reader.result !== 'string') {
-          return;
-        }
-        const attachment = {
-          name: file.name,
-          type: file.type || 'application/octet-stream',
-          dataUrl: reader.result,
-        };
-        setAssignments((prev) =>
-          prev.map((assignment, index) => {
-            if (index !== assignmentIndex) {
-              return assignment;
-            }
-            return {
-              ...assignment,
-              files: [...(assignment.files ?? []), attachment],
-            };
-          })
-        );
-      };
-      reader.readAsDataURL(file);
-    });
   };
 
   if (userRole !== 'teacher') {
@@ -134,57 +125,6 @@ export function CreateCourse() {
     );
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const selectedCategory = categories.find((category) => category.id === categoryId);
-    if (!selectedCategory) {
-      return;
-    }
-
-    const normalizedSyllabus = syllabus.map((section, index) => {
-      const title = section.title.trim() || `Section ${index + 1}`;
-      const lessons = section.lessons
-        .map((lesson, lessonIndex) => {
-          const current = typeof lesson === 'string' ? { title: lesson, files: [] } : lesson;
-          const lessonTitle = current.title.trim() || `Lesson ${lessonIndex + 1}`;
-          return { ...current, title: lessonTitle };
-        })
-        .filter((lesson) => lesson.title.trim().length > 0);
-      return {
-        ...section,
-        title,
-        lessons: lessons.length ? lessons : [{ title: 'Lesson 1', files: [] }],
-      };
-    });
-
-    const newCourse: Course = {
-      id: `${Date.now()}`,
-      title,
-      description,
-      category: selectedCategory.name,
-      categoryId: selectedCategory.id,
-      instructor: {
-        name: 'AlinHub Teacher',
-        bio: 'Instructor at AlinHub',
-        avatar: '👩‍🏫',
-      },
-      rating: 0,
-      reviewCount: 0,
-      students: 0,
-      level,
-      duration,
-      image,
-      syllabus: normalizedSyllabus,
-      learningOutcomes: learningOutcomes.map((item) => item.trim()).filter(Boolean),
-      assignments: assignments.filter(a => a.title.trim().length > 0),
-      reviews: [],
-      isPublished,
-    };
-
-    addCourse(newCourse);
-    router.push('/dashboard/teacher');
-  };
-
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
       <div className="container mx-auto px-4 py-10">
@@ -196,13 +136,7 @@ export function CreateCourse() {
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="space-y-2">
                 <Label htmlFor="title" className="text-gray-900">Course Title</Label>
-                <Input
-                  id="title"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="e.g. Intro to Web Development"
-                  required
-                />
+                <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} required />
               </div>
 
               <div className="space-y-2">
@@ -211,7 +145,6 @@ export function CreateCourse() {
                   id="description"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Write a short description of the course"
                   rows={4}
                   required
                 />
@@ -223,13 +156,12 @@ export function CreateCourse() {
                   <select
                     id="category"
                     className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                    value={categoryId}
-                    onChange={(e) => setCategoryId(e.target.value)}
-                    required
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
                   >
-                    {categoryOptions.map((category) => (
-                      <option key={category.id} value={category.id}>
-                        {category.name}
+                    {categoryOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
                       </option>
                     ))}
                   </select>
@@ -237,451 +169,58 @@ export function CreateCourse() {
 
                 <div className="space-y-2">
                   <Label htmlFor="level" className="text-gray-900">Level</Label>
-                  <Input
+                  <select
                     id="level"
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                     value={level}
-                    onChange={(e) => setLevel(e.target.value)}
-                    placeholder="Beginner, Intermediate..."
-                    required
-                  />
+                    onChange={(e) => setLevel(e.target.value as 'Beginner' | 'Intermediate' | 'Advanced')}
+                  >
+                    <option value="Beginner">Beginner</option>
+                    <option value="Intermediate">Intermediate</option>
+                    <option value="Advanced">Advanced</option>
+                  </select>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="duration" className="text-gray-900">Duration</Label>
+                  <Label htmlFor="duration" className="text-gray-900">Duration (hours)</Label>
                   <Input
                     id="duration"
+                    type="number"
+                    min="0"
                     value={duration}
                     onChange={(e) => setDuration(e.target.value)}
-                    placeholder="e.g. 6 weeks"
-                    required
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="image" className="text-gray-900">Image</Label>
-                  <div className="flex flex-col gap-3">
-                    <Input
-                      id="image"
-                      value={image}
-                      onChange={(e) => {
-                        setImage(e.target.value);
-                        setImageName('');
-                      }}
-                      placeholder="Paste image URL or use Upload"
-                    />
-                    <div className="flex items-center gap-3">
-                      <input
-                        id="image-upload"
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => handleImageFile(e.target.files?.[0] ?? null)}
-                        className="hidden"
-                      />
-                      <label
-                        htmlFor="image-upload"
-                        className="inline-flex items-center justify-center rounded-md border border-[#1E3A8A] px-3 py-2 text-sm text-[#1E3A8A] hover:bg-[#1E3A8A] hover:text-white"
-                      >
-                        Browse
-                      </label>
-                      <span className="text-xs text-gray-600 truncate">
-                        {imageName || 'No file selected'}
-                      </span>
-                    </div>
-                  </div>
-                  {image ? (
-                    <div className="mt-2 overflow-hidden rounded-lg border bg-gray-50">
-                      <img src={image} alt="Course preview" className="h-40 w-full object-cover" />
-                    </div>
-                  ) : null}
+                  <Label htmlFor="image" className="text-gray-900">Thumbnail URL</Label>
+                  <Input
+                    id="image"
+                    value={image}
+                    onChange={(e) => setImage(e.target.value)}
+                    placeholder="https://..."
+                  />
                 </div>
               </div>
 
-              <label className="flex items-center gap-2 text-sm text-gray-700">
-                <input
-                  type="checkbox"
-                  checked={isPublished}
-                  onChange={(e) => setIsPublished(e.target.checked)}
-                  className="rounded"
+              <div className="space-y-2">
+                <Label htmlFor="syllabusUrl" className="text-gray-900">Syllabus URL (optional)</Label>
+                <Input
+                  id="syllabusUrl"
+                  value={syllabusUrl}
+                  onChange={(e) => setSyllabusUrl(e.target.value)}
+                  placeholder="https://..."
                 />
-                Publish immediately (visible to students)
-              </label>
-
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <Label className="text-gray-900">Syllabus</Label>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="border-[#1E3A8A] text-[#1E3A8A]"
-                    onClick={() =>
-                      setSyllabus((prev) => [
-                        ...prev,
-                        {
-                          id: `${Date.now()}-${prev.length + 1}`,
-                          title: '',
-                          lessons: [{ title: '', files: [] }],
-                        },
-                      ])
-                    }
-                  >
-                    Add Section
-                  </Button>
-                </div>
-
-                {syllabus.map((section, sectionIndex) => (
-                  <div key={section.id} className="border rounded-lg p-4 space-y-3">
-                    <div className="flex items-center gap-3">
-                      <Input
-                        value={section.title}
-                        onChange={(e) =>
-                          setSyllabus((prev) =>
-                            prev.map((item, index) =>
-                              index === sectionIndex ? { ...item, title: e.target.value } : item
-                            )
-                          )
-                        }
-                        placeholder={`Section ${sectionIndex + 1} title`}
-                        className="flex-1"
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="border-red-300 text-red-600 hover:bg-red-50"
-                        onClick={() =>
-                          setSyllabus((prev) => prev.filter((_, index) => index !== sectionIndex))
-                        }
-                      >
-                        Remove
-                      </Button>
-                    </div>
-
-                    <div className="space-y-2">
-                      {section.lessons.map((lesson, lessonIndex) => (
-                        <div key={`${section.id}-lesson-${lessonIndex}`} className="space-y-2">
-                        <div key={`${section.id}-lesson-${lessonIndex}`} className="flex items-center gap-3">
-                          <Input
-                            value={typeof lesson === 'string' ? lesson : lesson.title}
-                            onChange={(e) =>
-                              setSyllabus((prev) =>
-                                prev.map((item, index) =>
-                                  index === sectionIndex
-                                    ? {
-                                        ...item,
-                                        lessons: item.lessons.map((value, innerIndex) =>
-                                          innerIndex === lessonIndex
-                                            ? typeof value === 'string'
-                                              ? e.target.value
-                                              : { ...value, title: e.target.value }
-                                            : value
-                                        ),
-                                      }
-                                    : item
-                                )
-                              )
-                            }
-                            placeholder={`Lesson ${lessonIndex + 1}`}
-                            className="flex-1"
-                          />
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className="border-red-300 text-red-600 hover:bg-red-50"
-                            onClick={() =>
-                              setSyllabus((prev) =>
-                                prev.map((item, index) =>
-                                  index === sectionIndex
-                                    ? { ...item, lessons: item.lessons.filter((_, innerIndex) => innerIndex !== lessonIndex) }
-                                    : item
-                                )
-                              )
-                            }
-                          >
-                            Remove
-                          </Button>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <input
-                            id={`lesson-file-${sectionIndex}-${lessonIndex}`}
-                            type="file"
-                            multiple
-                            onChange={(e) => handleLessonFiles(e.target.files, sectionIndex, lessonIndex)}
-                            className="hidden"
-                          />
-                          <label
-                            htmlFor={`lesson-file-${sectionIndex}-${lessonIndex}`}
-                            className="inline-flex items-center justify-center rounded-md border border-[#1E3A8A] px-3 py-2 text-sm text-[#1E3A8A] hover:bg-[#1E3A8A] hover:text-white"
-                          >
-                            Upload Lesson Files
-                          </label>
-                          <span className="text-xs text-gray-600">
-                            {typeof lesson === 'string' || !lesson.files?.length
-                              ? 'No files'
-                              : `${lesson.files.length} file(s) attached`}
-                          </span>
-                        </div>
-                        {typeof lesson !== 'string' && lesson.files?.length ? (
-                          <div className="space-y-1 text-xs text-gray-600">
-                            {lesson.files.map((file, fileIndex) => (
-                              <div key={`${file.name}-${fileIndex}`} className="flex items-center justify-between gap-2">
-                                <span className="truncate">{file.name}</span>
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  className="border-red-300 text-red-600 hover:bg-red-50"
-                                  onClick={() =>
-                                    setSyllabus((prev) =>
-                                      prev.map((item, index) => {
-                                        if (index !== sectionIndex) {
-                                          return item;
-                                        }
-                                        return {
-                                          ...item,
-                                          lessons: item.lessons.map((value, innerIndex) => {
-                                            if (innerIndex !== lessonIndex || typeof value === 'string') {
-                                              return value;
-                                            }
-                                            return {
-                                              ...value,
-                                              files: value.files?.filter((_, attachmentIndex) => attachmentIndex !== fileIndex),
-                                            };
-                                          }),
-                                        };
-                                      })
-                                    )
-                                  }
-                                >
-                                  Remove
-                                </Button>
-                              </div>
-                            ))}
-                          </div>
-                        ) : null}
-                        </div>
-                      ))}
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="border-[#1E3A8A] text-[#1E3A8A]"
-                        onClick={() =>
-                          setSyllabus((prev) =>
-                            prev.map((item, index) =>
-                              index === sectionIndex
-                                ? { ...item, lessons: [...item.lessons, { title: '', files: [] }] }
-                                : item
-                            )
-                          )
-                        }
-                      >
-                        Add Lesson
-                      </Button>
-                    </div>
-                  </div>
-                ))}
               </div>
 
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <Label className="text-gray-900">What You'll Learn</Label>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="border-[#1E3A8A] text-[#1E3A8A]"
-                    onClick={() => setLearningOutcomes((prev) => [...prev, ''])}
-                  >
-                    Add Outcome
-                  </Button>
-                </div>
-                <div className="space-y-2">
-                  {learningOutcomes.map((item, index) => (
-                    <div key={`outcome-${index}`} className="flex items-center gap-3">
-                      <Input
-                        value={item}
-                        onChange={(e) =>
-                          setLearningOutcomes((prev) =>
-                            prev.map((value, valueIndex) => (valueIndex === index ? e.target.value : value))
-                          )
-                        }
-                        placeholder={`Outcome ${index + 1}`}
-                        className="flex-1"
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="border-red-300 text-red-600 hover:bg-red-50"
-                        onClick={() =>
-                          setLearningOutcomes((prev) => prev.filter((_, valueIndex) => valueIndex !== index))
-                        }
-                      >
-                        Remove
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <Label className="text-gray-900">Assignments</Label>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="border-[#1E3A8A] text-[#1E3A8A]"
-                    onClick={() =>
-                      setAssignments((prev) => [
-                        ...prev,
-                        {
-                          id: `${Date.now()}-${prev.length + 1}`,
-                          title: '',
-                          description: '',
-                          dueDate: '',
-                          totalPoints: 0,
-                        },
-                      ])
-                    }
-                  >
-                    Add Assignment
-                  </Button>
-                </div>
-                <div className="space-y-3">
-                  {assignments.map((assignment, index) => (
-                    <div key={assignment.id} className="border rounded-lg p-4 space-y-3 bg-gray-50">
-                      <div className="flex items-center justify-between mb-3">
-                        <Label className="text-sm font-semibold text-gray-900">Assignment {index + 1}</Label>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="border-red-300 text-red-600 hover:bg-red-50"
-                          onClick={() =>
-                            setAssignments((prev) => prev.filter((_, i) => i !== index))
-                          }
-                        >
-                          Remove
-                        </Button>
-                      </div>
-                      <div className="space-y-2">
-                        <Label className="text-xs text-gray-700">Title</Label>
-                        <Input
-                          value={assignment.title}
-                          onChange={(e) =>
-                            setAssignments((prev) =>
-                              prev.map((item, i) =>
-                                i === index ? { ...item, title: e.target.value } : item
-                              )
-                            )
-                          }
-                          placeholder="e.g. Build a Todo App"
-                          required
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label className="text-xs text-gray-700">Description</Label>
-                        <Textarea
-                          value={assignment.description}
-                          onChange={(e) =>
-                            setAssignments((prev) =>
-                              prev.map((item, i) =>
-                                i === index ? { ...item, description: e.target.value } : item
-                              )
-                            )
-                          }
-                          placeholder="Assignment details and requirements"
-                          rows={3}
-                        />
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label className="text-xs text-gray-700">Due Date</Label>
-                          <Input
-                            type="date"
-                            value={assignment.dueDate}
-                            onChange={(e) =>
-                              setAssignments((prev) =>
-                                prev.map((item, i) =>
-                                  i === index ? { ...item, dueDate: e.target.value } : item
-                                )
-                              )
-                            }
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label className="text-xs text-gray-700">Total Points</Label>
-                          <Input
-                            type="number"
-                            value={assignment.totalPoints}
-                            onChange={(e) =>
-                              setAssignments((prev) =>
-                                prev.map((item, i) =>
-                                  i === index ? { ...item, totalPoints: parseInt(e.target.value) || 0 } : item
-                                )
-                              )
-                            }
-                            placeholder="100"
-                            min="0"
-                          />
-                        </div>
-                      </div>
-                      <div className="space-y-2">
-                        <Label className="text-xs text-gray-700">Upload Files</Label>
-                        <div className="flex items-center gap-3">
-                          <input
-                            id={`assignment-files-${index}`}
-                            type="file"
-                            multiple
-                            onChange={(e) => handleAssignmentFiles(e.target.files, index)}
-                            className="hidden"
-                            accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.zip"
-                          />
-                          <label
-                            htmlFor={`assignment-files-${index}`}
-                            className="inline-flex items-center justify-center rounded-md border border-[#1E3A8A] px-3 py-2 text-sm text-[#1E3A8A] hover:bg-[#1E3A8A] hover:text-white"
-                          >
-                            Upload Files
-                          </label>
-                          <span className="text-xs text-gray-600">
-                            {assignment.files?.length ? `${assignment.files.length} files` : 'No files'}
-                          </span>
-                        </div>
-                        {assignment.files && assignment.files.length > 0 && (
-                          <div className="space-y-1 text-xs text-gray-600">
-                            {assignment.files.map((file, fileIndex) => (
-                              <div key={`${file.name}-${fileIndex}`} className="flex items-center justify-between gap-2">
-                                <span className="truncate">{file.name}</span>
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  className="border-red-300 text-red-600 hover:bg-red-50 h-6 px-2"
-                                  onClick={() =>
-                                    setAssignments((prev) =>
-                                      prev.map((item, i) => {
-                                        if (i !== index) {
-                                          return item;
-                                        }
-                                        return {
-                                          ...item,
-                                          files: item.files?.filter((_, fIdx) => fIdx !== fileIndex),
-                                        };
-                                      })
-                                    )
-                                  }
-                                >
-                                  Remove
-                                </Button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
               <div className="flex items-center gap-3">
-                <Button type="submit" className="bg-[#F59E0B] hover:bg-[#F59E0B]/90 text-white">
-                  Create Course
+                <Button type="submit" disabled={saving} className="bg-[#F59E0B] hover:bg-[#F59E0B]/90 text-white">
+                  {saving ? 'Creating...' : 'Create Course'}
                 </Button>
                 <Link href="/dashboard/teacher">
-                  <Button variant="outline" className="border-[#1E3A8A] text-[#1E3A8A]">
+                  <Button type="button" variant="outline" className="border-[#1E3A8A] text-[#1E3A8A]">
                     Cancel
                   </Button>
                 </Link>

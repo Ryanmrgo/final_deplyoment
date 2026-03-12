@@ -26,6 +26,20 @@ export async function POST(req: Request) {
 
   try {
     const client = await clerkClient();
+    const clerkUser = await client.users.getUser(userId);
+
+    const primaryEmail =
+      clerkUser.emailAddresses.find(
+        (email) => email.id === clerkUser.primaryEmailAddressId
+      )?.emailAddress ||
+      clerkUser.emailAddresses[0]?.emailAddress ||
+      `${userId}@clerk.local`;
+
+    const displayName =
+      `${clerkUser.firstName || ''} ${clerkUser.lastName || ''}`.trim() ||
+      clerkUser.username ||
+      'User';
+
     await client.users.updateUser(userId, {
       publicMetadata: {
         role: body.role,
@@ -36,11 +50,24 @@ export async function POST(req: Request) {
     await User.findByIdAndUpdate(
       userId,
       {
-        _id: userId,
-        role: body.role,
-        updatedAt: new Date(),
+        $set: {
+          _id: userId,
+          email: primaryEmail,
+          name: displayName,
+          imageUrl: clerkUser.imageUrl || '',
+          role: body.role,
+          updatedAt: new Date(),
+        },
+        $setOnInsert: {
+          createdAt: new Date(),
+        },
       },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
+      {
+        upsert: true,
+        new: true,
+        setDefaultsOnInsert: true,
+        runValidators: true,
+      }
     );
 
     return NextResponse.json({ success: true });

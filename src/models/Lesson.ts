@@ -1,6 +1,26 @@
-import mongoose from 'mongoose';
+import mongoose, { HydratedDocument, Model, Schema } from 'mongoose';
 
-const lessonSchema = new mongoose.Schema(
+export type LessonType = 'video' | 'pdf' | 'ppt' | 'text';
+
+export interface Lesson {
+  courseId: mongoose.Types.ObjectId;
+  sectionTitle: string;
+  title: string;
+  description: string;
+  type: LessonType;
+  content: string;
+  fileUrl: string;
+  order: number;
+  duration: number;
+  isPublished: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export type LessonDocument = HydratedDocument<Lesson>;
+type LessonModel = Model<Lesson>;
+
+const lessonSchema = new Schema<Lesson, LessonModel>(
   {
     courseId: { type: mongoose.Schema.Types.ObjectId, ref: 'course', required: true },
     sectionTitle: { type: String, default: '' }, // e.g. "Module 1: Introduction"
@@ -20,6 +40,8 @@ const lessonSchema = new mongoose.Schema(
 
 lessonSchema.index({ courseId: 1, order: 1 });
 
-const Lesson = mongoose.models.lesson || mongoose.model('lesson', lessonSchema);
+const Lesson =
+  (mongoose.models.lesson as LessonModel | undefined) ||
+  mongoose.model<Lesson, LessonModel>('lesson', lessonSchema);
 
 export default Lesson;

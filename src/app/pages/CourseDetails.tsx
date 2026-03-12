@@ -9,8 +9,12 @@ import { Badge } from '@/app/components/ui/badge';
 import { Progress } from '@/app/components/ui/progress';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/app/components/ui/accordion';
 import { Avatar, AvatarFallback } from '@/app/components/ui/avatar';
-import { Star, Users, Clock, Award, BookOpen, ChevronRight, CheckCircle } from 'lucide-react';
+import { Input } from '@/app/components/ui/input';
+import { Textarea } from '@/app/components/ui/textarea';
+import { Label } from '@/app/components/ui/label';
+import { Star, Users, Clock, Award, BookOpen, ChevronRight, CheckCircle, MessageSquare, PlayCircle } from 'lucide-react';
 import { useAuth } from '@/app/components/AuthContext';
+import { toast } from 'sonner';
 
 interface CourseDetailsProps {
   id: string;
@@ -27,6 +31,19 @@ export function CourseDetails({ id }: CourseDetailsProps) {
   const [isEnrolling, setIsEnrolling] = useState(false);
   const [enrollError, setEnrollError] = useState('');
   const [updatingProgress, setUpdatingProgress] = useState(false);
+  const [lessons, setLessons] = useState<any[]>([]);
+  const [lessonsLoading, setLessonsLoading] = useState(false);
+  const [discussions, setDiscussions] = useState<any[]>([]);
+  const [discussionLoading, setDiscussionLoading] = useState(false);
+  const [discussionDraft, setDiscussionDraft] = useState('');
+  const [discussionError, setDiscussionError] = useState('');
+  const [postingDiscussion, setPostingDiscussion] = useState(false);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState('');
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [reviewMessage, setReviewMessage] = useState('');
+  const [quizItems, setQuizItems] = useState<any[]>([]);
+  const [quizLoading, setQuizLoading] = useState(false);
 
   useEffect(() => {
     fetch(`/api/courses/${id}`)
@@ -36,15 +53,53 @@ export function CourseDetails({ id }: CourseDetailsProps) {
         setIsEnrolled(data.isEnrolled || false);
         setEnrollmentId(data.enrollmentId || null);
         setProgress(data.enrollmentProgress ?? 0);
+        if (data?.myReview) {
+          setReviewRating(Number(data.myReview.rating) || 5);
+          setReviewComment(String(data.myReview.comment || ''));
+        }
       })
       .catch(() => setCourse(null))
       .finally(() => setLoading(false));
   }, [id]);
 
+  useEffect(() => {
+    if (!isEnrolled || !user || userRole !== 'student') {
+      setLessons([]);
+      setDiscussions([]);
+      return;
+    }
+
+    setLessonsLoading(true);
+    fetch(`/api/courses/${id}/lessons`)
+      .then((r) => (r.ok ? r.json() : { items: [] }))
+      .then((data) => setLessons(data.items || []))
+      .catch(() => setLessons([]))
+      .finally(() => setLessonsLoading(false));
+
+    setDiscussionLoading(true);
+    fetch(`/api/courses/${id}/discussions`)
+      .then((r) => (r.ok ? r.json() : { items: [] }))
+      .then((data) => setDiscussions(data.items || []))
+      .catch(() => setDiscussions([]))
+      .finally(() => setDiscussionLoading(false));
+
+    setQuizLoading(true);
+    fetch(`/api/student/quizzes?courseId=${id}`)
+      .then((r) => (r.ok ? r.json() : { items: [] }))
+      .then((data) => setQuizItems(data.items || []))
+      .catch(() => setQuizItems([]))
+      .finally(() => setQuizLoading(false));
+  }, [id, isEnrolled, user, userRole]);
+
   const handleEnroll = async () => {
     if (isLoading || !user || userRole !== 'student') return;
+    const previousEnrolled = isEnrolled;
+    const previousProgress = progress;
+    setIsEnrolled(true);
+    setProgress(0);
     setIsEnrolling(true);
     setEnrollError('');
+    const toastId = toast.loading('Enrolling in course...');
     try {
       const res = await fetch('/api/enrollment', {
         method: 'POST',
@@ -55,8 +110,12 @@ export function CourseDetails({ id }: CourseDetailsProps) {
       if (!res.ok) throw new Error(data.error || 'Failed to enroll');
       setIsEnrolled(true);
       setProgress(0);
+      toast.success('Enrolled successfully.', { id: toastId });
     } catch (e: any) {
+      setIsEnrolled(previousEnrolled);
+      setProgress(previousProgress);
       setEnrollError(e.message || 'Failed to enroll');
+      toast.error(e?.message || 'Failed to enroll', { id: toastId });
     } finally {
       setIsEnrolling(false);
     }
@@ -64,16 +123,134 @@ export function CourseDetails({ id }: CourseDetailsProps) {
 
   const handleUpdateProgress = async (newProgress: number) => {
     if (!enrollmentId || newProgress === progress) return;
+    const previousProgress = progress;
+    setProgress(newProgress);
     setUpdatingProgress(true);
+    const toastId = toast.loading('Updating progress...');
     try {
       const res = await fetch(`/api/student/enrollments/${enrollmentId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ progress: newProgress }),
       });
-      if (res.ok) setProgress(newProgress);
+      if (!res.ok) throw new Error('Failed to update progress');
+      toast.success('Progress updated.', { id: toastId });
+    } catch (e: any) {
+      setProgress(previousProgress);
+      toast.error(e?.message || 'Failed to update progress', { id: toastId });
     } finally {
       setUpdatingProgress(false);
+    }
+  };
+
+  const handlePostDiscussion = async () => {
+    const question = discussionDraft.trim();
+    if (!question) {
+      setDiscussionError('Question is required.');
+      return;
+    }
+
+    const tempDiscussion = {
+      _id: `temp-${Date.now()}`,
+      question,
+      resolved: false,
+      replies: [],
+    };
+
+    const previousDiscussions = discussions;
+    setDiscussions((prev) => [tempDiscussion, ...prev]);
+    setDiscussionDraft('');
+    setPostingDiscussion(true);
+    setDiscussionError('');
+    const toastId = toast.loading('Posting question...');
+    try {
+      const res = await fetch(`/api/courses/${id}/discussions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to post question');
+
+      setDiscussions((prev) => [data.discussion, ...prev.filter((item) => item._id !== tempDiscussion._id)]);
+      toast.success('Question posted.', { id: toastId });
+    } catch (error: any) {
+      setDiscussions(previousDiscussions);
+      setDiscussionError(error?.message || 'Failed to post question.');
+      toast.error(error?.message || 'Failed to post question.', { id: toastId });
+    } finally {
+      setPostingDiscussion(false);
+    }
+  };
+
+  const handleSubmitReview = async () => {
+    if (!reviewComment.trim()) {
+      setReviewMessage('Please add a review comment.');
+      return;
+    }
+
+    const previousCourse = course;
+    const previousReviewMessage = reviewMessage;
+    const optimisticReview = {
+      id: `temp-${Date.now()}`,
+      student: user?.name || 'You',
+      rating: reviewRating,
+      comment: reviewComment.trim(),
+      date: new Date().toLocaleDateString(),
+    };
+
+    setCourse((prev: any) => {
+      if (!prev) return prev;
+      const existingReviews = Array.isArray(prev.reviews) ? prev.reviews : [];
+      const existingIndex = existingReviews.findIndex((r: any) => r.student === optimisticReview.student);
+      let nextReviews = existingReviews;
+      if (existingIndex >= 0) {
+        nextReviews = existingReviews.map((r: any, idx: number) => (idx === existingIndex ? { ...r, ...optimisticReview } : r));
+      } else {
+        nextReviews = [optimisticReview, ...existingReviews];
+      }
+
+      const total = nextReviews.reduce((sum: number, r: any) => sum + Number(r.rating || 0), 0);
+      const avg = nextReviews.length ? total / nextReviews.length : 0;
+
+      return {
+        ...prev,
+        reviews: nextReviews,
+        reviewCount: nextReviews.length,
+        rating: avg,
+      };
+    });
+
+    setReviewSubmitting(true);
+    setReviewMessage('');
+    const toastId = toast.loading('Submitting review...');
+    try {
+      const res = await fetch(`/api/courses/${id}/reviews`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rating: reviewRating, comment: reviewComment.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to submit review');
+
+      setCourse((prev: any) =>
+        prev
+          ? {
+              ...prev,
+              reviews: data.reviews || prev.reviews,
+              rating: data.rating,
+              reviewCount: data.reviewCount,
+            }
+          : prev
+      );
+      setReviewMessage('Review submitted successfully.');
+      toast.success('Review submitted.', { id: toastId });
+    } catch (error: any) {
+      setCourse(previousCourse);
+      setReviewMessage(error?.message || previousReviewMessage || 'Failed to submit review.');
+      toast.error(error?.message || 'Failed to submit review.', { id: toastId });
+    } finally {
+      setReviewSubmitting(false);
     }
   };
 
@@ -102,6 +279,8 @@ export function CourseDetails({ id }: CourseDetailsProps) {
   const fullStars = Math.floor(averageRating);
   const hasHalfStar = averageRating % 1 !== 0;
   const syllabus = course.syllabus || [];
+  const syllabusMaterials = Array.isArray(course.syllabusMaterials) ? course.syllabusMaterials : [];
+  const hasSyllabusFile = Boolean(course.syllabusUrl);
   const reviews = course.reviews || [];
 
   return (
@@ -190,6 +369,181 @@ export function CourseDetails({ id }: CourseDetailsProps) {
               </Card>
             )}
 
+            {hasSyllabusFile && (
+              <Card className="bg-white">
+                <CardContent className="p-6">
+                  <h2 className="text-2xl font-bold mb-3 text-gray-900">Syllabus File</h2>
+                  <p className="text-sm text-gray-600 mb-4">Download or view the course syllabus provided by the teacher.</p>
+                  <a
+                    href={course.syllabusUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center rounded-md bg-[#1E3A8A] px-4 py-2 text-sm font-medium text-white hover:bg-[#1E3A8A]/90"
+                  >
+                    Open {course.syllabusName || 'Syllabus'}
+                  </a>
+                  {syllabusMaterials.length > 0 ? (
+                    <div className="mt-4 space-y-2">
+                      <p className="text-sm font-medium text-gray-900">More Materials</p>
+                      <div className="space-y-2">
+                        {syllabusMaterials.map((material: any, index: number) => (
+                          <a
+                            key={`${material.url || ''}-${index}`}
+                            href={material.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="block rounded border px-3 py-2 text-sm text-[#1E3A8A] hover:bg-blue-50"
+                          >
+                            {material.label || material.name || `Material ${index + 1}`}
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </CardContent>
+              </Card>
+            )}
+
+            {isEnrolled && (
+              <Card className="bg-white">
+                <CardContent className="p-6">
+                  <h2 className="text-2xl font-bold mb-4 text-gray-900 flex items-center gap-2">
+                    <PlayCircle className="w-6 h-6 text-[#1E3A8A]" />
+                    Course Lessons
+                  </h2>
+                  {lessonsLoading ? (
+                    <p className="text-sm text-gray-600">Loading lessons...</p>
+                  ) : lessons.length === 0 ? (
+                    <p className="text-sm text-gray-600">No lessons published yet.</p>
+                  ) : (
+                    <div className="space-y-4">
+                      {lessons.map((lesson) => (
+                        <div key={lesson.id} className="border rounded-lg p-4">
+                          <div className="flex items-center justify-between gap-3 mb-2">
+                            <h3 className="font-semibold text-gray-900">{lesson.title}</h3>
+                            <Badge variant="outline">{String(lesson.type || 'text').toUpperCase()}</Badge>
+                          </div>
+                          {lesson.description ? <p className="text-sm text-gray-700 mb-3">{lesson.description}</p> : null}
+
+                          {lesson.type === 'video' && lesson.content ? (
+                            <a
+                              href={lesson.content}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-sm text-[#1E3A8A] underline"
+                            >
+                              Watch video
+                            </a>
+                          ) : null}
+
+                          {(lesson.type === 'pdf' || lesson.type === 'ppt') && lesson.fileUrl ? (
+                            <a
+                              href={lesson.fileUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-sm text-[#1E3A8A] underline"
+                            >
+                              Open material
+                            </a>
+                          ) : null}
+
+                          {lesson.type === 'text' && lesson.content ? (
+                            <p className="text-sm text-gray-700 whitespace-pre-wrap">{lesson.content}</p>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {isEnrolled && userRole === 'student' && (
+              <Card className="bg-white">
+                <CardContent className="p-6 space-y-4">
+                  <h2 className="text-2xl font-bold text-gray-900">Course Quizzes</h2>
+                  {quizLoading ? (
+                    <p className="text-sm text-gray-600">Loading quizzes...</p>
+                  ) : quizItems.length === 0 ? (
+                    <p className="text-sm text-gray-600">No published quizzes yet.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {quizItems.map((quiz) => (
+                        <div key={quiz.id} className="border rounded-lg p-3 flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <p className="font-medium text-gray-900">{quiz.title}</p>
+                            <p className="text-xs text-gray-600">
+                              {quiz.totalPoints} points • Passing {quiz.passingScore}% • {quiz.timeLimit ? `${quiz.timeLimit} min` : 'No time limit'}
+                            </p>
+                          </div>
+                          <Link href={`/courses/${id}/quiz/${quiz.id}`}>
+                            <Button className="bg-[#F59E0B] hover:bg-[#F59E0B]/90 text-white" size="sm">
+                              Take Quiz
+                            </Button>
+                          </Link>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {isEnrolled && userRole === 'student' && (
+              <Card className="bg-white">
+                <CardContent className="p-6 space-y-4">
+                  <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+                    <MessageSquare className="w-6 h-6 text-[#1E3A8A]" />
+                    Course Discussions
+                  </h2>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="discussionQuestion">Ask a question</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        id="discussionQuestion"
+                        value={discussionDraft}
+                        onChange={(e) => setDiscussionDraft(e.target.value)}
+                        placeholder="Write your question here..."
+                      />
+                      <Button
+                        className="bg-[#1E3A8A] hover:bg-[#1E3A8A]/90"
+                        disabled={postingDiscussion}
+                        onClick={handlePostDiscussion}
+                      >
+                        {postingDiscussion ? 'Posting...' : 'Post'}
+                      </Button>
+                    </div>
+                    {discussionError ? <p className="text-sm text-red-600">{discussionError}</p> : null}
+                  </div>
+
+                  {discussionLoading ? (
+                    <p className="text-sm text-gray-600">Loading discussions...</p>
+                  ) : discussions.length === 0 ? (
+                    <p className="text-sm text-gray-600">No discussions yet.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {discussions.map((discussion) => (
+                        <div key={discussion._id} className="border rounded-lg p-3">
+                          <div className="flex items-center justify-between gap-3 mb-2">
+                            <p className="font-medium text-gray-900">{discussion.question || discussion.content || 'Question'}</p>
+                            <Badge className={discussion.resolved ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}>
+                              {discussion.resolved ? 'Resolved' : 'Open'}
+                            </Badge>
+                          </div>
+                          {(discussion.replies || []).map((reply: any, index: number) => (
+                            <div key={`${discussion._id}-reply-${index}`} className="bg-gray-50 rounded p-2 text-sm text-gray-700 mt-2">
+                              {reply.message || reply.content}
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
             <Card className="bg-white">
               <CardContent className="p-6">
                 <h2 className="text-2xl font-bold mb-4 text-gray-900">Instructor</h2>
@@ -208,6 +562,45 @@ export function CourseDetails({ id }: CourseDetailsProps) {
             <Card className="bg-white">
               <CardContent className="p-6">
                 <h2 className="text-2xl font-bold mb-6 text-gray-900">Student Reviews</h2>
+                {isEnrolled && userRole === 'student' ? (
+                  <div className="border rounded-lg p-4 mb-6 space-y-3">
+                    <h3 className="font-semibold text-gray-900">Write a review</h3>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="reviewRating">Rating</Label>
+                      <select
+                        id="reviewRating"
+                        className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                        value={reviewRating}
+                        onChange={(e) => setReviewRating(Number(e.target.value))}
+                      >
+                        <option value={5}>5 - Excellent</option>
+                        <option value={4}>4 - Good</option>
+                        <option value={3}>3 - Average</option>
+                        <option value={2}>2 - Poor</option>
+                        <option value={1}>1 - Bad</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="reviewComment">Comment</Label>
+                      <Textarea
+                        id="reviewComment"
+                        value={reviewComment}
+                        onChange={(e) => setReviewComment(e.target.value)}
+                        placeholder="Share your learning experience"
+                        rows={3}
+                      />
+                    </div>
+                    <Button
+                      className="bg-[#F59E0B] hover:bg-[#F59E0B]/90 text-white"
+                      disabled={reviewSubmitting}
+                      onClick={handleSubmitReview}
+                    >
+                      {reviewSubmitting ? 'Submitting...' : 'Submit Review'}
+                    </Button>
+                    {reviewMessage ? <p className="text-sm text-gray-700">{reviewMessage}</p> : null}
+                  </div>
+                ) : null}
+
                 {reviews.length > 0 ? (
                   <div className="space-y-6">
                     {reviews.map((review: any) => (
