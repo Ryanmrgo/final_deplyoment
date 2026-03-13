@@ -1,5 +1,6 @@
 import { auth } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
+import mongoose from 'mongoose';
 import connectDB from '@/config/db';
 import Lesson from '@/models/Lesson';
 import Enrollment from '@/models/Enrollment';
@@ -13,6 +14,9 @@ export async function GET(
   try {
     const { id } = await params;
     if (!id) return NextResponse.json({ error: 'Course ID required' }, { status: 400 });
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return NextResponse.json({ error: 'Invalid course ID' }, { status: 400 });
+    }
 
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -28,7 +32,11 @@ export async function GET(
       return NextResponse.json({ error: 'Enroll in course to view lessons' }, { status: 403 });
     }
 
-    const lessons = await Lesson.find({ courseId: id, isPublished: true })
+    const courseObjectId = new mongoose.Types.ObjectId(id);
+    const lessons = await Lesson.find({
+      courseId: courseObjectId,
+      $or: [{ isPublished: true }, { isPublished: { $exists: false } }],
+    })
       .sort({ order: 1 })
       .lean();
 

@@ -33,6 +33,7 @@ export function CourseDetails({ id }: CourseDetailsProps) {
   const [updatingProgress, setUpdatingProgress] = useState(false);
   const [lessons, setLessons] = useState<any[]>([]);
   const [lessonsLoading, setLessonsLoading] = useState(false);
+  const [lessonsError, setLessonsError] = useState('');
   const [discussions, setDiscussions] = useState<any[]>([]);
   const [discussionLoading, setDiscussionLoading] = useState(false);
   const [discussionDraft, setDiscussionDraft] = useState('');
@@ -63,33 +64,48 @@ export function CourseDetails({ id }: CourseDetailsProps) {
   }, [id]);
 
   useEffect(() => {
-    if (!isEnrolled || !user || userRole !== 'student') {
+    const isInstructor = Boolean(course?.isInstructor);
+    const canViewLessons = Boolean(user) && (isEnrolled || isInstructor);
+
+    if (!canViewLessons) {
       setLessons([]);
+      setLessonsError('');
       setDiscussions([]);
+      setQuizItems([]);
       return;
     }
 
     setLessonsLoading(true);
+    setLessonsError('');
     fetch(`/api/courses/${id}/lessons`)
-      .then((r) => (r.ok ? r.json() : { items: [] }))
+      .then(async (r) => {
+        if (r.ok) return r.json();
+        const data = await r.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to load lessons');
+      })
       .then((data) => setLessons(data.items || []))
-      .catch(() => setLessons([]))
+      .catch((error: any) => {
+        setLessons([]);
+        setLessonsError(error?.message || 'Failed to load lessons');
+      })
       .finally(() => setLessonsLoading(false));
 
-    setDiscussionLoading(true);
-    fetch(`/api/courses/${id}/discussions`)
-      .then((r) => (r.ok ? r.json() : { items: [] }))
-      .then((data) => setDiscussions(data.items || []))
-      .catch(() => setDiscussions([]))
-      .finally(() => setDiscussionLoading(false));
+    if (userRole === 'student') {
+      setDiscussionLoading(true);
+      fetch(`/api/courses/${id}/discussions`)
+        .then((r) => (r.ok ? r.json() : { items: [] }))
+        .then((data) => setDiscussions(data.items || []))
+        .catch(() => setDiscussions([]))
+        .finally(() => setDiscussionLoading(false));
 
-    setQuizLoading(true);
-    fetch(`/api/student/quizzes?courseId=${id}`)
-      .then((r) => (r.ok ? r.json() : { items: [] }))
-      .then((data) => setQuizItems(data.items || []))
-      .catch(() => setQuizItems([]))
-      .finally(() => setQuizLoading(false));
-  }, [id, isEnrolled, user, userRole]);
+      setQuizLoading(true);
+      fetch(`/api/student/quizzes?courseId=${id}`)
+        .then((r) => (r.ok ? r.json() : { items: [] }))
+        .then((data) => setQuizItems(data.items || []))
+        .catch(() => setQuizItems([]))
+        .finally(() => setQuizLoading(false));
+    }
+  }, [id, isEnrolled, user, userRole, course?.isInstructor]);
 
   const handleEnroll = async () => {
     if (isLoading || !user || userRole !== 'student') return;
@@ -404,15 +420,20 @@ export function CourseDetails({ id }: CourseDetailsProps) {
               </Card>
             )}
 
-            {isEnrolled && (
+            {(isEnrolled || course?.isInstructor) && (
               <Card className="bg-white">
                 <CardContent className="p-6">
                   <h2 className="text-2xl font-bold mb-4 text-gray-900 flex items-center gap-2">
                     <PlayCircle className="w-6 h-6 text-[#1E3A8A]" />
                     Course Lessons
                   </h2>
+                  {course?.isInstructor && !isEnrolled ? (
+                    <p className="text-xs text-gray-500 mb-3">Instructor preview mode.</p>
+                  ) : null}
                   {lessonsLoading ? (
                     <p className="text-sm text-gray-600">Loading lessons...</p>
+                  ) : lessonsError ? (
+                    <p className="text-sm text-red-600">{lessonsError}</p>
                   ) : lessons.length === 0 ? (
                     <p className="text-sm text-gray-600">No lessons published yet.</p>
                   ) : (

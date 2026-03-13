@@ -3,6 +3,7 @@ import connectDB from '@/config/db';
 import Course from '@/models/Course';
 import User from '@/models/User';
 import Enrollment from '@/models/Enrollment';
+import mongoose from 'mongoose';
 import { auth } from '@clerk/nextjs/server';
 
 // Public route - fetch single course by ID
@@ -51,7 +52,7 @@ export async function GET(
     if (userId) {
       const enrollment = await Enrollment.findOne({
         studentId: userId,
-        courseId: id,
+        courseId: new mongoose.Types.ObjectId(id),
       }).lean();
       if (enrollment) {
         isEnrolled = true;

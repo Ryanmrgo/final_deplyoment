@@ -767,6 +767,13 @@ export function TeacherDashboard() {
                             {new Date(item.time).toLocaleDateString()} • {new Date(item.time).toLocaleTimeString()}
                           </p>
                         </div>
+                        {item.type === 'discussion' && item.courseId ? (
+                          <Link href={`/courses/${item.courseId}#teacher-discussions`}>
+                            <Button variant="outline" size="sm" className="border-[#1E3A8A] text-[#1E3A8A]">
+                              Reply
+                            </Button>
+                          </Link>
+                        ) : null}
                       </div>
                     ))}
                   </div>

@@ -4,8 +4,23 @@ import connectDB from '@/config/db';
 import Course from '@/models/Course';
 import Lesson from '@/models/Lesson';
 import { getEffectiveRole } from '@/lib/auth';
+import { uploadToCloudinary } from '@/lib/cloudinary';
 
 const isLessonType = (value: string) => ['video', 'pdf', 'ppt', 'text'].includes(value);
+
+const MAX_LESSON_BYTES = 20 * 1024 * 1024;
+const LESSON_EXTENSIONS = ['.pdf', '.ppt', '.pptx', '.doc', '.docx'];
+
+const validateLessonFile = (file: File) => {
+  if (file.size > MAX_LESSON_BYTES) {
+    throw new Error('Lesson file size exceeds 20MB limit');
+  }
+
+  const ext = `.${file.name.split('.').pop() || ''}`.toLowerCase();
+  if (!LESSON_EXTENSIONS.includes(ext)) {
+    throw new Error('Unsupported lesson file type');
+  }
+};
 
 const ensureOwnership = async (courseId: string, userId: string) => {
   if (!mongoose.Types.ObjectId.isValid(courseId)) {
@@ -24,9 +39,8 @@ export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { userId, role } = await getEffectiveRole();
+  const { userId } = await getEffectiveRole();
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (role !== 'teacher') return NextResponse.json({ error: 'Teacher role required' }, { status: 403 });
 
   try {
     await connectDB();
@@ -49,12 +63,27 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { userId, role } = await getEffectiveRole();
+  const { userId } = await getEffectiveRole();
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (role !== 'teacher') return NextResponse.json({ error: 'Teacher role required' }, { status: 403 });
 
   try {
-    const body = await req.json();
+    const contentType = req.headers.get('content-type') || '';
+    const isMultipart = contentType.includes('multipart/form-data');
+
+    let body: Record<string, unknown> = {};
+    let lessonFile: File | null = null;
+
+    if (isMultipart) {
+      const formData = await req.formData();
+      body = Object.fromEntries(
+        Array.from(formData.entries()).filter(([, value]) => typeof value === 'string')
+      );
+      const fileEntry = formData.get('lessonFile');
+      lessonFile = fileEntry instanceof File ? fileEntry : null;
+    } else {
+      body = await req.json();
+    }
+
     await connectDB();
 
     const { id } = await params;
@@ -64,13 +93,39 @@ export async function POST(
     const title = typeof body.title === 'string' ? body.title.trim() : '';
     const description = typeof body.description === 'string' ? body.description.trim() : '';
     const sectionTitle = typeof body.sectionTitle === 'string' ? body.sectionTitle.trim() : '';
-    const type = typeof body.type === 'string' && isLessonType(body.type) ? body.type : 'text';
+    const requestedType =
+      typeof body.type === 'string' && isLessonType(body.type) ? (body.type as string) : 'text';
     const content = typeof body.content === 'string' ? body.content.trim() : '';
-    const fileUrl = typeof body.fileUrl === 'string' ? body.fileUrl.trim() : '';
+    const fileUrlFromBody = typeof body.fileUrl === 'string' ? body.fileUrl.trim() : '';
     const duration = Number(body.duration) || 0;
 
     if (!title) {
       return NextResponse.json({ error: 'Lesson title is required' }, { status: 400 });
+    }
+
+    let fileUrl = fileUrlFromBody;
+    let type = requestedType;
+
+    const uploadsEnabled = Boolean(
+      process.env.CLOUDINARY_CLOUD_NAME &&
+        process.env.CLOUDINARY_API_KEY &&
+        process.env.CLOUDINARY_API_SECRET
+    );
+
+    if (lessonFile && uploadsEnabled) {
+      validateLessonFile(lessonFile);
+      const upload = await uploadToCloudinary(lessonFile, {
+        folder: 'course-lessons',
+        resourceType: 'raw',
+      });
+      fileUrl = upload.url;
+
+      // For uploaded docs, coerce to a document type understood by Lesson.type
+      if (requestedType === 'text' || requestedType === 'video') {
+        type = 'pdf';
+      } else {
+        type = requestedType;
+      }
     }
 
     const maxOrderLesson = await Lesson.findOne({ courseId: id }).sort({ order: -1 }).lean();
@@ -101,9 +156,8 @@ export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { userId, role } = await getEffectiveRole();
+  const { userId } = await getEffectiveRole();
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (role !== 'teacher') return NextResponse.json({ error: 'Teacher role required' }, { status: 403 });
 
   try {
     const body = await req.json();

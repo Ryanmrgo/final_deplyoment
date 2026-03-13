@@ -480,13 +480,13 @@ export function CourseManage({ courseId }: CourseManageProps) {
       }
 
       if (editingLessonId && data.lesson) {
-        setLessons((prev) =>
-          prev
-            .map((item) => (item._id === editingLessonId ? data.lesson : item))
-            .sort((a, b) => a.order - b.order)
-        );
+        const refresh = await fetch(`/api/teacher/courses/${courseId}/lessons`);
+        const refreshData = await refresh.json().catch(() => ({ items: [] }));
+        setLessons((refreshData.items || []).sort((a: LessonItem, b: LessonItem) => a.order - b.order));
       } else if (data.lesson) {
-        setLessons((prev) => [...prev, data.lesson].sort((a, b) => a.order - b.order));
+        const refresh = await fetch(`/api/teacher/courses/${courseId}/lessons`);
+        const refreshData = await refresh.json().catch(() => ({ items: [] }));
+        setLessons((refreshData.items || []).sort((a: LessonItem, b: LessonItem) => a.order - b.order));
       }
 
       resetLessonForm();

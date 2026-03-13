@@ -41,7 +41,7 @@ export async function POST(
       return NextResponse.json({ error: 'Instructors cannot review their own course' }, { status: 400 });
     }
 
-    const enrollment = await Enrollment.findOne({ courseId: id, studentId: userId }).lean();
+    const enrollment = await Enrollment.findOne({ courseId: new mongoose.Types.ObjectId(id), studentId: userId }).lean();
     if (!enrollment) {
       return NextResponse.json({ error: 'You must be enrolled to leave a review' }, { status: 403 });
     }

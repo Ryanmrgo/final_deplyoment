@@ -17,7 +17,7 @@ const ensureCourseAccess = async (courseId: string, userId: string) => {
   }
 
   const isInstructor = String((course as any).instructor || '') === userId;
-  const enrollment = await Enrollment.findOne({ courseId, studentId: userId }).lean();
+  const enrollment = await Enrollment.findOne({ courseId: new mongoose.Types.ObjectId(courseId), studentId: userId }).lean();
 
   if (!isInstructor && !enrollment) {
     return { error: NextResponse.json({ error: 'Access denied' }, { status: 403 }) };
