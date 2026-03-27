@@ -668,6 +668,11 @@ export function CourseDetails({ id }: CourseDetailsProps) {
                   <>
                     {isEnrolled ? (
                       <div className="mb-4">
+                        <Link href={`/courses/${id}/learn`} className="block mb-3">
+                          <Button className="w-full bg-[#1E3A8A] hover:bg-[#1E3A8A]/90 text-white">
+                            Open Learning Player
+                          </Button>
+                        </Link>
                         <div className="flex justify-between items-center mb-2">
                           <span className="text-sm font-medium text-gray-700">Your Progress</span>
                           <span className="text-sm font-bold text-[#1E3A8A]">{progress}%</span>
@@ -721,6 +726,11 @@ export function CourseDetails({ id }: CourseDetailsProps) {
                     <Link href={`/dashboard/teacher/course/${id}`}>
                       <Button variant="outline" className="w-full border-blue-600 text-blue-700">
                         Edit course settings
+                      </Button>
+                    </Link>
+                    <Link href={`/dashboard/teacher/course/${id}/lessons`}>
+                      <Button variant="outline" className="w-full border-blue-600 text-blue-700">
+                        Manage lesson uploads
                       </Button>
                     </Link>
                   </div>

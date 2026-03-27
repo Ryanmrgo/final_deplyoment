@@ -13,12 +13,14 @@ import {
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
 import { Textarea } from '@/app/components/ui/textarea';
-import { Plus, Users, BookOpen, Star, TrendingUp, Edit, Eye, EyeOff, Settings } from 'lucide-react';
+import { Plus, Users, BookOpen, Star, TrendingUp, Eye, EyeOff, Settings, PlayCircle } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import { useAuth } from '@/app/components/AuthContext';
+import { toast } from 'sonner';
+import { DEFAULT_LESSON_MAX_UPLOAD_MB } from '@/lib/lesson';
 
 const DEFAULT_CATEGORIES = [
   'General',
@@ -29,22 +31,20 @@ const DEFAULT_CATEGORIES = [
   'Marketing',
 ];
 
-type SyllabusItem = {
+type DraftLesson = {
   id: string;
-  label: string;
+  title: string;
+  description: string;
+  type: 'video' | 'youtube' | 'document';
+  youtubeUrl: string;
   file: File | null;
+  supportingFile: File | null;
   error: string | null;
 };
 
 export function TeacherDashboard() {
   const { user, userRole, isLoading } = useAuth();
   const router = useRouter();
-  const createSyllabusItem = (index: number): SyllabusItem => ({
-    id: `${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`,
-    label: `Label ${index}`,
-    file: null,
-    error: null,
-  });
   const [teacherCourses, setTeacherCourses] = useState<any[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [activity, setActivity] = useState<any[]>([]);
@@ -58,9 +58,18 @@ export function TeacherDashboard() {
   const [createLanguage, setCreateLanguage] = useState('English');
   const [createRequirements, setCreateRequirements] = useState('');
   const [createOutcomes, setCreateOutcomes] = useState('');
-  const [createSyllabusItems, setCreateSyllabusItems] = useState<SyllabusItem[]>(() => [createSyllabusItem(1)]);
+  const createLessonDraft = (): DraftLesson => ({
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    title: '',
+    description: '',
+    type: 'video',
+    youtubeUrl: '',
+    file: null,
+    supportingFile: null,
+    error: null,
+  });
+  const [lessonDrafts, setLessonDrafts] = useState<DraftLesson[]>([createLessonDraft()]);
   const [createThumbnailFile, setCreateThumbnailFile] = useState<File | null>(null);
-  const [createSyllabusError, setCreateSyllabusError] = useState<string | null>(null);
   const [createThumbnailError, setCreateThumbnailError] = useState<string | null>(null);
   const [thumbnailPreviewUrl, setThumbnailPreviewUrl] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -68,16 +77,15 @@ export function TeacherDashboard() {
   const [publishingId, setPublishingId] = useState<string | null>(null);
   const [categoryOptions, setCategoryOptions] = useState<string[]>(DEFAULT_CATEGORIES);
 
-  const MAX_SYLLABUS_MB = 20;
   const MAX_THUMBNAIL_MB = 5;
-  const SYLLABUS_TYPES = [
-    'application/pdf',
-    'application/vnd.ms-powerpoint',
-    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-  ];
-  const SYLLABUS_EXTS = ['.pdf', '.ppt', '.pptx'];
   const THUMBNAIL_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
   const THUMBNAIL_EXTS = ['.jpg', '.jpeg', '.png', '.webp'];
+  const LESSON_EXTS = ['.pdf', '.ppt', '.pptx', '.doc', '.docx', '.mp4', '.mkv', '.avi', '.mov', '.webm'];
+  const lessonMaxUploadMb = Number(process.env.NEXT_PUBLIC_LESSON_MAX_UPLOAD_MB);
+  const MAX_LESSON_MB =
+    Number.isFinite(lessonMaxUploadMb) && lessonMaxUploadMb > 0
+      ? lessonMaxUploadMb
+      : DEFAULT_LESSON_MAX_UPLOAD_MB;
 
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
@@ -178,53 +186,12 @@ export function TeacherDashboard() {
     }
   }, [userRole, user]);
 
-  const validateSyllabusFile = (file: File) => {
-    const ext = `.${file.name.split('.').pop() || ''}`.toLowerCase();
-    if (!SYLLABUS_EXTS.includes(ext)) return 'Only PDF or PPTX/PPT files are allowed.';
-    if (file.type && !SYLLABUS_TYPES.includes(file.type)) return 'Unsupported syllabus file type.';
-    if (file.size > MAX_SYLLABUS_MB * 1024 * 1024) return `Max file size is ${MAX_SYLLABUS_MB}MB.`;
-    return null;
-  };
-
   const validateThumbnailFile = (file: File) => {
     const ext = `.${file.name.split('.').pop() || ''}`.toLowerCase();
     if (!THUMBNAIL_EXTS.includes(ext)) return 'Use JPG, PNG, or WEBP.';
     if (file.type && !THUMBNAIL_TYPES.includes(file.type)) return 'Unsupported image type.';
     if (file.size > MAX_THUMBNAIL_MB * 1024 * 1024) return `Max image size is ${MAX_THUMBNAIL_MB}MB.`;
     return null;
-  };
-
-  const handleSyllabusLabelChange = (id: string, value: string) => {
-    setCreateSyllabusItems((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, label: value } : item))
-    );
-    setCreateSyllabusError(null);
-  };
-
-  const handleSyllabusFileChange = (id: string, event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0] || null;
-    if (!file) {
-      setCreateSyllabusItems((prev) =>
-        prev.map((item) => (item.id === id ? { ...item, file: null, error: null } : item))
-      );
-      setCreateSyllabusError(null);
-      return;
-    }
-    const error = validateSyllabusFile(file);
-    setCreateSyllabusItems((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, file: error ? null : file, error } : item))
-    );
-    setCreateSyllabusError(null);
-  };
-
-  const handleAddSyllabusItem = () => {
-    setCreateSyllabusItems((prev) => [...prev, createSyllabusItem(prev.length + 1)]);
-    setCreateSyllabusError(null);
-  };
-
-  const handleRemoveSyllabusItem = (id: string) => {
-    setCreateSyllabusItems((prev) => (prev.length > 1 ? prev.filter((item) => item.id !== id) : prev));
-    setCreateSyllabusError(null);
   };
 
   const handleThumbnailChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -239,6 +206,80 @@ export function TeacherDashboard() {
     setCreateThumbnailFile(error ? null : file);
   };
 
+  const handleLessonFileChange = (lessonId: string, event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] || null;
+    if (!file) {
+      setLessonDrafts((prev) =>
+        prev.map((lesson) => (lesson.id === lessonId ? { ...lesson, file: null, error: null } : lesson))
+      );
+      return;
+    }
+
+    const ext = `.${file.name.split('.').pop() || ''}`.toLowerCase();
+    if (!LESSON_EXTS.includes(ext)) {
+      setLessonDrafts((prev) =>
+        prev.map((lesson) =>
+          lesson.id === lessonId
+            ? { ...lesson, file: null, error: 'Unsupported lesson file type.' }
+            : lesson
+        )
+      );
+      return;
+    }
+    if (file.size > MAX_LESSON_MB * 1024 * 1024) {
+      setLessonDrafts((prev) =>
+        prev.map((lesson) =>
+          lesson.id === lessonId
+            ? { ...lesson, file: null, error: `Lesson file max size is ${MAX_LESSON_MB}MB.` }
+            : lesson
+        )
+      );
+      return;
+    }
+
+    setLessonDrafts((prev) =>
+      prev.map((lesson) => (lesson.id === lessonId ? { ...lesson, file, error: null } : lesson))
+    );
+  };
+
+  const handleLessonSupportingFileChange = (lessonId: string, event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] || null;
+    if (!file) {
+      setLessonDrafts((prev) =>
+        prev.map((lesson) =>
+          lesson.id === lessonId ? { ...lesson, supportingFile: null, error: null } : lesson
+        )
+      );
+      return;
+    }
+
+    const ext = `.${file.name.split('.').pop() || ''}`.toLowerCase();
+    if (!LESSON_EXTS.includes(ext)) {
+      setLessonDrafts((prev) =>
+        prev.map((lesson) =>
+          lesson.id === lessonId
+            ? { ...lesson, supportingFile: null, error: 'Unsupported supporting file type.' }
+            : lesson
+        )
+      );
+      return;
+    }
+    if (file.size > MAX_LESSON_MB * 1024 * 1024) {
+      setLessonDrafts((prev) =>
+        prev.map((lesson) =>
+          lesson.id === lessonId
+            ? { ...lesson, supportingFile: null, error: `Supporting file max size is ${MAX_LESSON_MB}MB.` }
+            : lesson
+        )
+      );
+      return;
+    }
+
+    setLessonDrafts((prev) =>
+      prev.map((lesson) => (lesson.id === lessonId ? { ...lesson, supportingFile: file, error: null } : lesson))
+    );
+  };
+
   const resetCreateForm = () => {
     setCreateTitle('');
     setCreateDesc('');
@@ -248,9 +289,8 @@ export function TeacherDashboard() {
     setCreateLanguage('English');
     setCreateRequirements('');
     setCreateOutcomes('');
-    setCreateSyllabusItems([createSyllabusItem(1)]);
+    setLessonDrafts([createLessonDraft()]);
     setCreateThumbnailFile(null);
-    setCreateSyllabusError(null);
     setCreateThumbnailError(null);
     setCreateError(null);
   };
@@ -274,9 +314,26 @@ export function TeacherDashboard() {
       setCreateError('Course description is required.');
       return;
     }
-    const syllabusFiles = createSyllabusItems.filter((item) => item.file);
-    if (createSyllabusError || createThumbnailError || createSyllabusItems.some((item) => item.error)) {
+    if (createThumbnailError) {
       return;
+    }
+    const lessonsToCreate = lessonDrafts.filter(
+      (lesson) => lesson.title.trim() || lesson.description.trim() || lesson.youtubeUrl.trim() || lesson.file
+    );
+    if (lessonsToCreate.some((lesson) => lesson.error)) return;
+    for (const lesson of lessonsToCreate) {
+      if (!lesson.title.trim()) {
+        setCreateError('Each lesson needs a title.');
+        return;
+      }
+      if (lesson.type === 'youtube' && !lesson.youtubeUrl.trim()) {
+        setCreateError(`YouTube URL is required for lesson "${lesson.title || 'Untitled'}".`);
+        return;
+      }
+      if (lesson.type !== 'youtube' && !lesson.file) {
+        setCreateError(`File is required for lesson "${lesson.title || 'Untitled'}".`);
+        return;
+      }
     }
     setCreating(true);
     setCreateError(null);
@@ -291,12 +348,6 @@ export function TeacherDashboard() {
       formData.append('language', createLanguage.trim() || 'English');
       formData.append('requirements', createRequirements.trim());
       formData.append('outcomes', createOutcomes.trim());
-      syllabusFiles.forEach((item, index) => {
-        if (!item.file) return;
-        formData.append('syllabusFiles', item.file);
-        const safeLabel = (item.label ?? '').trim() || `Label ${index + 1}`;
-        formData.append('syllabusLabels', safeLabel);
-      });
       if (createThumbnailFile) {
         formData.append('thumbnail', createThumbnailFile);
       }
@@ -318,10 +369,65 @@ export function TeacherDashboard() {
         data = null;
       }
       if (res.ok && data?.course) {
+        const createdCourseId = data.course?._id || data.course?.id;
+
+        let createdLessonsCount = 0;
+        if (createdCourseId && lessonsToCreate.length) {
+          for (let i = 0; i < lessonsToCreate.length; i += 1) {
+            const lesson = lessonsToCreate[i];
+            const lessonData = new FormData();
+            lessonData.append('courseId', createdCourseId);
+            lessonData.append('title', lesson.title.trim());
+            lessonData.append('description', lesson.description.trim());
+            lessonData.append('lessonOrder', String(i));
+
+            if (lesson.type === 'youtube') {
+              lessonData.append('videoType', 'youtube');
+              lessonData.append('youtubeUrl', lesson.youtubeUrl.trim());
+            } else if (lesson.file) {
+              if (lesson.type === 'video') {
+                lessonData.append('videoType', 'upload');
+                lessonData.append('videoFile', lesson.file);
+              } else {
+                lessonData.append('lessonFiles', lesson.file);
+              }
+            }
+
+            if ((lesson.type === 'video' || lesson.type === 'youtube') && lesson.supportingFile) {
+              lessonData.append('lessonFiles', lesson.supportingFile);
+            }
+
+            const lessonRes = await fetch('/api/lessons', {
+              method: 'POST',
+              body: lessonData,
+            });
+
+            if (!lessonRes.ok) {
+              const lessonJson = await lessonRes.json().catch(() => ({}));
+              setCreateError(
+                `Course created, but lesson ${i + 1} failed: ${lessonJson.error || 'Unknown error'}`
+              );
+              setTeacherCourses((prev) => [data.course, ...prev]);
+              if (stats) setStats({ ...stats, activeCourses: (stats.activeCourses || 0) + 1 });
+              return;
+            }
+
+            createdLessonsCount += 1;
+          }
+        }
+
         setTeacherCourses((prev) => [data.course, ...prev]);
         if (stats) setStats({ ...stats, activeCourses: (stats.activeCourses || 0) + 1 });
         setCreateOpen(false);
         resetCreateForm();
+        toast.success(
+          createdLessonsCount > 0
+            ? `Course and ${createdLessonsCount} lesson(s) created successfully.`
+            : 'Course created successfully.'
+        );
+        if (createdCourseId) {
+          router.push(`/dashboard/teacher/course/${createdCourseId}/lessons`);
+        }
       } else {
         const fallback = `Failed to create course (HTTP ${res.status})`;
         setCreateError(data?.error || rawText || fallback);
@@ -364,7 +470,7 @@ export function TeacherDashboard() {
                 <Label htmlFor="title">Course Title</Label>
                 <Input
                   id="title"
-                  value={createTitle}
+                  value={createTitle ?? ''}
                   onChange={(e) => setCreateTitle(e.target.value)}
                   placeholder="e.g. Introduction to Web Development"
                 />
@@ -373,7 +479,7 @@ export function TeacherDashboard() {
                 <Label htmlFor="desc">Description</Label>
                 <Textarea
                   id="desc"
-                  value={createDesc}
+                  value={createDesc ?? ''}
                   onChange={(e) => setCreateDesc(e.target.value)}
                   placeholder="What students will learn and why this course matters"
                   className="min-h-28"
@@ -384,7 +490,7 @@ export function TeacherDashboard() {
                   <Label htmlFor="category">Category</Label>
                   <select
                     id="category"
-                    value={createCategory}
+                    value={createCategory ?? ''}
                     onChange={(e) => setCreateCategory(e.target.value)}
                     className="h-10 w-full rounded-md border border-input bg-input-background px-3 text-sm"
                   >
@@ -399,7 +505,7 @@ export function TeacherDashboard() {
                   <Label htmlFor="level">Level</Label>
                   <select
                     id="level"
-                    value={createLevel}
+                    value={createLevel ?? 'Beginner'}
                     onChange={(e) => setCreateLevel(e.target.value)}
                     className="h-10 w-full rounded-md border border-input bg-input-background px-3 text-sm"
                   >
@@ -416,7 +522,7 @@ export function TeacherDashboard() {
                     id="duration"
                     type="number"
                     min="0"
-                    value={createDuration}
+                    value={createDuration ?? ''}
                     onChange={(e) => setCreateDuration(e.target.value)}
                     placeholder="e.g. 6"
                   />
@@ -425,7 +531,7 @@ export function TeacherDashboard() {
                   <Label htmlFor="language">Language</Label>
                   <Input
                     id="language"
-                    value={createLanguage}
+                    value={createLanguage ?? ''}
                     onChange={(e) => setCreateLanguage(e.target.value)}
                     placeholder="e.g. English"
                   />
@@ -439,7 +545,7 @@ export function TeacherDashboard() {
                 <Label htmlFor="requirements">Requirements</Label>
                 <Textarea
                   id="requirements"
-                  value={createRequirements}
+                  value={createRequirements ?? ''}
                   onChange={(e) => setCreateRequirements(e.target.value)}
                   placeholder="List any prerequisites or tools students should have"
                   className="min-h-24"
@@ -449,7 +555,7 @@ export function TeacherDashboard() {
                 <Label htmlFor="outcomes">Learning Outcomes</Label>
                 <Textarea
                   id="outcomes"
-                  value={createOutcomes}
+                  value={createOutcomes ?? ''}
                   onChange={(e) => setCreateOutcomes(e.target.value)}
                   placeholder="Describe the skills or outcomes students will gain"
                   className="min-h-24"
@@ -459,54 +565,151 @@ export function TeacherDashboard() {
 
             <div className="rounded-lg border border-gray-200 bg-gray-50/60 p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <Label>Syllabus / Learning Materials</Label>
-                <Button type="button" variant="outline" size="sm" onClick={handleAddSyllabusItem}
-                  className="border-[#1E3A8A] text-[#1E3A8A]">
+                <Label>New Lesson</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="border-[#1E3A8A] text-[#1E3A8A]"
+                  onClick={() => setLessonDrafts((prev) => [...prev, createLessonDraft()])}
+                >
                   <Plus className="w-4 h-4 mr-1" />
                   Add
                 </Button>
               </div>
-              <p className="text-xs text-gray-500">Upload materials per label (Label 1, Label 2, ...).</p>
-              <div className="space-y-3">
-                {createSyllabusItems.map((item, index) => (
-                  <div key={item.id} className="rounded-md border border-gray-200 p-3">
-                    <div className="flex flex-col gap-3 md:flex-row md:items-start">
-                      <div className="md:w-40 space-y-1.5">
-                        <Label htmlFor={`syllabus-day-${item.id}`}>Label</Label>
-                        <Input
-                          id={`syllabus-day-${item.id}`}
-                          value={item.label ?? ''}
-                          onChange={(e) => handleSyllabusLabelChange(item.id, e.target.value)}
-                          placeholder={`Label ${index + 1}`}
-                        />
-                      </div>
-                      <div className="flex-1 min-w-0 space-y-1.5">
-                        <Label htmlFor={`syllabus-file-${item.id}`}>File (PDF or PPTX)</Label>
-                        <Input
-                          id={`syllabus-file-${item.id}`}
-                          type="file"
-                          accept=".pdf,.ppt,.pptx,application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation"
-                          onChange={(event) => handleSyllabusFileChange(item.id, event)}
-                          className="w-full file:mr-3 file:rounded-md file:bg-[#1E3A8A] file:px-3 file:py-1.5 file:text-white file:hover:bg-[#1E3A8A]/90"
-                        />
-                      </div>
+              <p className="text-xs text-gray-500">
+                Configure one full lesson unit here. Use Add to create multiple lessons.
+              </p>
+
+              {lessonDrafts.map((lesson, index) => (
+                <div key={lesson.id} className="rounded-md border border-gray-200 bg-white p-3 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold text-gray-900">Lesson {index + 1}</p>
+                    {lessonDrafts.length > 1 ? (
                       <Button
                         type="button"
                         variant="outline"
                         size="sm"
-                        onClick={() => handleRemoveSyllabusItem(item.id)}
-                        disabled={createSyllabusItems.length === 1}
-                        className="md:self-end"
+                        onClick={() =>
+                          setLessonDrafts((prev) => prev.filter((draft) => draft.id !== lesson.id))
+                        }
                       >
                         Remove
                       </Button>
-                    </div>
-                    {item.error && <p className="text-sm text-red-600 mt-2">{item.error}</p>}
+                    ) : null}
                   </div>
-                ))}
-              </div>
-              <p className="text-xs text-gray-500">Max file size per file: {MAX_SYLLABUS_MB}MB</p>
-              {createSyllabusError && <p className="text-sm text-red-600">{createSyllabusError}</p>}
+                  <div className="space-y-1.5">
+                    <Label htmlFor={`lesson-title-${lesson.id}`}>Lesson Title</Label>
+                    <Input
+                      id={`lesson-title-${lesson.id}`}
+                      value={lesson.title ?? ''}
+                      onChange={(e) =>
+                        setLessonDrafts((prev) =>
+                          prev.map((draft) =>
+                            draft.id === lesson.id ? { ...draft, title: e.target.value } : draft
+                          )
+                        )
+                      }
+                      placeholder="e.g. Welcome and Course Overview"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor={`lesson-description-${lesson.id}`}>Lesson Description</Label>
+                    <Textarea
+                      id={`lesson-description-${lesson.id}`}
+                      value={lesson.description ?? ''}
+                      onChange={(e) =>
+                        setLessonDrafts((prev) =>
+                          prev.map((draft) =>
+                            draft.id === lesson.id ? { ...draft, description: e.target.value } : draft
+                          )
+                        )
+                      }
+                      placeholder="Short summary of the lesson"
+                      className="min-h-20"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor={`lesson-type-${lesson.id}`}>Lesson Type</Label>
+                    <select
+                      id={`lesson-type-${lesson.id}`}
+                      value={lesson.type ?? 'video'}
+                      onChange={(e) =>
+                        setLessonDrafts((prev) =>
+                          prev.map((draft) =>
+                            draft.id === lesson.id
+                              ? {
+                                  ...draft,
+                                  type: e.target.value as 'video' | 'youtube' | 'document',
+                                  supportingFile:
+                                    e.target.value === 'document' ? null : draft.supportingFile,
+                                  error: null,
+                                }
+                              : draft
+                          )
+                        )
+                      }
+                      className="h-10 w-full rounded-md border border-input bg-input-background px-3 text-sm"
+                    >
+                      <option value="video">Video File</option>
+                      <option value="youtube">YouTube Link</option>
+                      <option value="document">Document</option>
+                    </select>
+                  </div>
+                  {lesson.type === 'youtube' ? (
+                    <div className="space-y-1.5">
+                      <Label htmlFor={`lesson-youtube-url-${lesson.id}`}>YouTube URL</Label>
+                      <Input
+                        key={`lesson-youtube-input-${lesson.id}`}
+                        id={`lesson-youtube-url-${lesson.id}`}
+                        value={lesson.youtubeUrl ?? ''}
+                        onChange={(e) =>
+                          setLessonDrafts((prev) =>
+                            prev.map((draft) =>
+                              draft.id === lesson.id ? { ...draft, youtubeUrl: e.target.value } : draft
+                            )
+                          )
+                        }
+                        placeholder="https://www.youtube.com/watch?v=..."
+                      />
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      <Label htmlFor={`lesson-file-${lesson.id}`}>
+                        {lesson.type === 'video' ? 'Upload Video File' : 'Upload Document File'}
+                      </Label>
+                      <Input
+                        key={`lesson-file-input-${lesson.id}`}
+                        id={`lesson-file-${lesson.id}`}
+                        type="file"
+                        accept={lesson.type === 'video' ? '.mp4,.mkv,.avi,.mov,.webm' : '.pdf,.ppt,.pptx,.doc,.docx'}
+                        onChange={(e) => handleLessonFileChange(lesson.id, e)}
+                        className="w-full file:mr-3 file:rounded-md file:bg-[#1E3A8A] file:px-3 file:py-1.5 file:text-white file:hover:bg-[#1E3A8A]/90"
+                      />
+                      <p className="text-xs text-gray-500">Max file size: {MAX_LESSON_MB}MB</p>
+                    </div>
+                  )}
+                  {lesson.type !== 'document' ? (
+                    <div className="space-y-1.5">
+                      <Label htmlFor={`lesson-supporting-file-${lesson.id}`}>
+                        Upload Supporting File (PPT/PDF/DOC) - Optional
+                      </Label>
+                      <Input
+                        key={`lesson-supporting-file-input-${lesson.id}`}
+                        id={`lesson-supporting-file-${lesson.id}`}
+                        type="file"
+                        accept=".pdf,.ppt,.pptx,.doc,.docx"
+                        onChange={(e) => handleLessonSupportingFileChange(lesson.id, e)}
+                        className="w-full file:mr-3 file:rounded-md file:bg-[#1E3A8A] file:px-3 file:py-1.5 file:text-white file:hover:bg-[#1E3A8A]/90"
+                      />
+                      <p className="text-xs text-gray-500">
+                        Add your teaching slides/notes so students can download them.
+                      </p>
+                    </div>
+                  ) : null}
+                  {lesson.error ? <p className="text-sm text-red-600">{lesson.error}</p> : null}
+                </div>
+              ))}
             </div>
 
             <div className="rounded-lg border border-gray-200 bg-gray-50/60 p-4 space-y-1.5">
@@ -543,7 +746,8 @@ export function TeacherDashboard() {
             </div>
 
             <p className="text-xs text-gray-500">
-              New courses are published by default and immediately visible to students.
+              New courses are published by default and immediately visible to students. After creating,
+              you will be redirected to upload lessons and videos.
             </p>
             {createError && <p className="text-sm text-red-600">{createError}</p>}
           </div>
@@ -724,6 +928,12 @@ export function TeacherDashboard() {
                                 <Button variant="outline" size="sm" className="border-[#1E3A8A] text-[#1E3A8A]">
                                   <Settings className="w-4 h-4 mr-2" />
                                   Settings
+                                </Button>
+                              </Link>
+                              <Link href={`/dashboard/teacher/course/${courseId}/lessons`}>
+                                <Button variant="outline" size="sm" className="border-[#1E3A8A] text-[#1E3A8A]">
+                                  <PlayCircle className="w-4 h-4 mr-2" />
+                                  Lessons
                                 </Button>
                               </Link>
                               <Link href={`/dashboard/teacher/course/${courseId}#quizzes`}>

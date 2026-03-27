@@ -5,15 +5,15 @@ import Course from '@/models/Course';
 import Lesson from '@/models/Lesson';
 import { getEffectiveRole } from '@/lib/auth';
 import { uploadToCloudinary } from '@/lib/cloudinary';
+import { LESSON_MAX_UPLOAD_MB, MAX_LESSON_UPLOAD_BYTES } from '@/lib/lesson';
 
 const isLessonType = (value: string) => ['video', 'pdf', 'ppt', 'text'].includes(value);
 
-const MAX_LESSON_BYTES = 20 * 1024 * 1024;
 const LESSON_EXTENSIONS = ['.pdf', '.ppt', '.pptx', '.doc', '.docx'];
 
 const validateLessonFile = (file: File) => {
-  if (file.size > MAX_LESSON_BYTES) {
-    throw new Error('Lesson file size exceeds 20MB limit');
+  if (file.size > MAX_LESSON_UPLOAD_BYTES) {
+    throw new Error(`Lesson file size exceeds ${LESSON_MAX_UPLOAD_MB}MB limit`);
   }
 
   const ext = `.${file.name.split('.').pop() || ''}`.toLowerCase();

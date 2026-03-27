@@ -158,10 +158,7 @@ export async function POST(req: Request) {
       });
     }
 
-    if (uploadsEnabled && syllabusMaterials.length === 0 && !syllabusUpload && !body.syllabusUrl) {
-      return NextResponse.json({ error: 'syllabus file is required' }, { status: 400 });
-    }
-
+    // Syllabus file is optional. Teachers can add lesson materials after course creation.
     // Thumbnail is optional; leave empty if not provided.
 
     const duration = Number(body.duration ?? 0) || 0;
