@@ -3,6 +3,10 @@ import { NextResponse } from 'next/server';
 import connectDB from '@/config/db';
 import User from '@/models/User';
 
+function normalizeRole(value: unknown): 'teacher' | 'student' {
+  return value === 'teacher' ? 'teacher' : 'student';
+}
+
 export async function POST() {
   const { userId } = await auth();
 
@@ -16,9 +20,7 @@ export async function POST() {
 
     await connectDB();
 
-    const role = (clerkUser.publicMetadata?.role as string) || 
-                 (clerkUser.unsafeMetadata?.role as string) || 
-                 'student';
+    const role = normalizeRole(clerkUser.publicMetadata?.role ?? clerkUser.unsafeMetadata?.role);
 
     const user = await User.findByIdAndUpdate(
       userId,

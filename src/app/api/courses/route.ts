@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import connectDB from '@/config/db';
 import Course from '@/models/Course';
 import User from '@/models/User';
+import Lesson from '@/models/Lesson';
 
 // Public route - no auth required for browsing course catalog
 export async function GET(req: Request) {
@@ -33,7 +34,16 @@ export async function GET(req: Request) {
     // Enrich with instructor names
     const instructorIds = [...new Set(courses.map((c) => c.instructor as string))];
     const users = await User.find({ _id: { $in: instructorIds } }).lean();
-    const userMap = Object.fromEntries(users.map((u) => [u._id, u.name]));
+    const userMap = Object.fromEntries(users.map((u: any) => [String(u._id), String(u.name || 'Instructor')]));
+
+    const courseIds = courses.map((course) => course._id);
+    const lessonCounts = await Lesson.aggregate([
+      { $match: { courseId: { $in: courseIds }, isPublished: true } },
+      { $group: { _id: '$courseId', count: { $sum: 1 } } },
+    ]);
+    const lessonCountMap = new Map<string, number>(
+      lessonCounts.map((item: any) => [String(item._id), Number(item.count || 0)])
+    );
 
     const items = courses.map((course) => ({
       id: course._id.toString(),
@@ -49,6 +59,7 @@ export async function GET(req: Request) {
       students: course.totalStudents || 0,
       level: course.level || 'Beginner',
       duration: course.duration ? `${course.duration}h` : '0h',
+      lessonsCount: lessonCountMap.get(String(course._id)) || 0,
       image: course.image || 'https://images.unsplash.com/photo-1498050108023-c5249f4df085?w=800&h=450',
       price: course.price,
     }));

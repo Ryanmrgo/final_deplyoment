@@ -22,7 +22,8 @@ async function connectDB() {
     cached.promise = mongoose
       .connect(process.env.MONGODB_URI!, opts)
       .then((mongoose) => {
-        console.log('[MongoDB] Connected successfully to:', mongoose.connection.db.databaseName);
+        const dbName = mongoose.connection.db?.databaseName || '(unknown-db)';
+        console.log('[MongoDB] Connected successfully to:', dbName);
         return mongoose;
       })
       .catch((error) => {

@@ -75,6 +75,7 @@ export function TeacherDashboard() {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [publishingId, setPublishingId] = useState<string | null>(null);
+  const [publishError, setPublishError] = useState<string | null>(null);
   const [categoryOptions, setCategoryOptions] = useState<string[]>(DEFAULT_CATEGORIES);
 
   const MAX_THUMBNAIL_MB = 5;
@@ -96,6 +97,7 @@ export function TeacherDashboard() {
     const courseId = course._id || course.id;
     if (!courseId) return;
     setPublishingId(courseId);
+    setPublishError(null);
     try {
       const newStatus = course.status === 'Published' ? 'Draft' : 'Published';
       const res = await fetch(`/api/teacher/courses/${courseId}`, {
@@ -103,15 +105,18 @@ export function TeacherDashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
       });
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setTeacherCourses((prev) =>
           prev.map((c) =>
             (c._id || c.id) === courseId ? { ...c, status: newStatus } : c
           )
         );
+      } else {
+        setPublishError(data?.error || 'Failed to change course visibility.');
       }
     } catch {
-      // ignore
+      setPublishError('Failed to change course visibility.');
     } finally {
       setPublishingId(null);
     }
@@ -773,6 +778,7 @@ export function TeacherDashboard() {
           <div>
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Teacher Dashboard</h1>
             <p className="text-gray-600">Manage your courses and monitor student progress</p>
+            {publishError ? <p className="text-sm text-red-600 mt-2">{publishError}</p> : null}
           </div>
           <div className="flex flex-col items-end gap-2">
             <Button onClick={() => setCreateOpen(true)} className="bg-[#F59E0B] hover:bg-[#F59E0B]/90 text-white">

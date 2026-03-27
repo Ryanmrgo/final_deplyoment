@@ -22,7 +22,19 @@ function getInitials(name: string) {
 }
 
 export function Profile() {
-  const { userRole, profile, updateProfile } = useAuth();
+  const { userRole, user } = useAuth();
+  const profile = {
+    name: user?.name ?? '',
+    email: user?.email ?? '',
+    avatar: '',
+    bio: '',
+    professionalism: '',
+    rating: undefined as number | undefined,
+    graduationYear: '',
+    expertise: '',
+    experienceYears: '',
+    role: userRole,
+  };
   const resolvedRole = profile?.role ?? userRole;
   const [name, setName] = useState(profile?.name ?? '');
   const [email, setEmail] = useState(profile?.email ?? '');
@@ -110,7 +122,6 @@ export function Profile() {
       updatedProfile.rating = Number(rating);
     }
     
-    updateProfile(updatedProfile);
     setIsEditing(false);
     setAvatarName('');
   };

@@ -4,6 +4,7 @@ import { useAuth } from '@/app/components/AuthContext';
 import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardFooter } from '@/app/components/ui/card';
+import { Progress } from '@/app/components/ui/progress';
 import { CheckCircle, Clock, Star, Users } from 'lucide-react';
 import Link from 'next/link';
 
@@ -21,6 +22,7 @@ interface CourseCardProps {
   students: number;
   level: string;
   duration: string;
+  lessonsCount?: number;
   image?: string;
   isEnrolled?: boolean;
   enrollmentDate?: string;
@@ -38,12 +40,14 @@ export function CourseCard({
   students,
   level,
   duration,
+  lessonsCount = 0,
   image,
   isEnrolled = false,
   enrollmentDate,
   userProgress = 0,
 }: CourseCardProps) {
-  const { isSignedIn } = useAuth();
+  const { user } = useAuth();
+  const isSignedIn = Boolean(user);
   const enrolled = isEnrolled;
   const hasImage = Boolean(image && image.trim());
 
@@ -94,12 +98,7 @@ export function CourseCard({
       {/* Progress Bar for enrolled courses */}
       {enrolled && userProgress > 0 && (
         <div className="absolute top-12 left-3 right-3 z-10">
-          <div className="w-full bg-gray-200 rounded-full h-2">
-            <div 
-              className="bg-green-500 h-2 rounded-full" 
-              style={{ width: `${userProgress}%` }}
-            ></div>
-          </div>
+          <Progress value={userProgress} className="h-2 bg-gray-200" />
           <span className="text-xs text-white bg-black/70 px-2 py-1 rounded mt-1 inline-block">
             {userProgress}% Complete
           </span>
@@ -140,6 +139,10 @@ export function CourseCard({
             <Clock className="w-4 h-4" />
             <span>{duration}</span>
           </div>
+        </div>
+
+        <div className="mb-3 text-xs text-gray-600">
+          {lessonsCount > 0 ? `${lessonsCount} published lessons` : 'No lessons published yet'}
         </div>
 
         <div className="flex items-center justify-between">

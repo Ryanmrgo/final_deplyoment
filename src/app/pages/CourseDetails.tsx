@@ -45,6 +45,55 @@ export function CourseDetails({ id }: CourseDetailsProps) {
   const [reviewMessage, setReviewMessage] = useState('');
   const [quizItems, setQuizItems] = useState<any[]>([]);
   const [quizLoading, setQuizLoading] = useState(false);
+  const [completedLessonIds, setCompletedLessonIds] = useState<string[]>([]);
+  const [autoMarkingLessons, setAutoMarkingLessons] = useState<Set<string>>(new Set());
+  const [autoMarkCountdown, setAutoMarkCountdown] = useState<Record<string, number>>({});
+
+  const normalizeVideoUrl = (url: string) => {
+    try {
+      const parsed = new URL(url);
+
+      // YouTube regular videos: youtube.com/watch?v=videoId
+      if (parsed.hostname.includes('youtube.com')) {
+        const videoId = parsed.searchParams.get('v');
+        if (videoId) return `https://www.youtube-nocookie.com/embed/${videoId}?modestbranding=1&rel=0`;
+      }
+
+      // YouTube shorts: youtube.com/shorts/videoId
+      if (parsed.hostname.includes('youtube.com') && parsed.pathname.includes('/shorts/')) {
+        const videoId = parsed.pathname.split('/shorts/')[1]?.split('?')[0]?.trim();
+        if (videoId) return `https://www.youtube-nocookie.com/embed/${videoId}?modestbranding=1&rel=0`;
+      }
+
+      // Short YouTube links: youtu.be/videoId
+      if (parsed.hostname.includes('youtu.be')) {
+        const videoId = parsed.pathname.replace('/', '').trim();
+        if (videoId) return `https://www.youtube-nocookie.com/embed/${videoId}?modestbranding=1&rel=0`;
+      }
+
+      // Vimeo videos
+      if (parsed.hostname.includes('vimeo.com')) {
+        const videoId = parsed.pathname.split('/').filter(Boolean).pop();
+        if (videoId) return `https://player.vimeo.com/video/${videoId}`;
+      }
+
+      return url;
+    } catch {
+      return url;
+    }
+  };
+
+  const getLessonStorageKey = () => {
+    const userId = String((user as any)?.id || (user as any)?._id || (user as any)?.userId || 'anonymous');
+    return `course:${id}:completedLessons:${userId}`;
+  };
+
+  const calculateProgressFromCompletedLessons = (completedIds: string[], currentLessons: any[]) => {
+    const totalLessons = currentLessons.length;
+    if (totalLessons === 0) return 0;
+    const completedCount = currentLessons.filter((lesson) => completedIds.includes(String(lesson.id))).length;
+    return Math.round((completedCount / totalLessons) * 100);
+  };
 
   useEffect(() => {
     fetch(`/api/courses/${id}`)
@@ -62,6 +111,24 @@ export function CourseDetails({ id }: CourseDetailsProps) {
       .catch(() => setCourse(null))
       .finally(() => setLoading(false));
   }, [id]);
+
+  useEffect(() => {
+    if (!user || lessons.length === 0) {
+      setCompletedLessonIds([]);
+      return;
+    }
+
+    try {
+      const raw = localStorage.getItem(getLessonStorageKey());
+      const parsed = raw ? JSON.parse(raw) : [];
+      const valid = Array.isArray(parsed)
+        ? parsed.map((value) => String(value)).filter((lessonId) => lessons.some((lesson) => String(lesson.id) === lessonId))
+        : [];
+      setCompletedLessonIds(valid);
+    } catch {
+      setCompletedLessonIds([]);
+    }
+  }, [id, user, lessons]);
 
   useEffect(() => {
     const isInstructor = Boolean(course?.isInstructor);
@@ -158,6 +225,60 @@ export function CourseDetails({ id }: CourseDetailsProps) {
       setUpdatingProgress(false);
     }
   };
+
+  const handleCompleteLesson = async (lessonId: string) => {
+    if (!enrollmentId || userRole !== 'student' || !isEnrolled) return;
+
+    const normalizedLessonId = String(lessonId);
+    if (completedLessonIds.includes(normalizedLessonId)) return;
+
+    const nextCompleted = [...completedLessonIds, normalizedLessonId];
+    setCompletedLessonIds(nextCompleted);
+
+    try {
+      localStorage.setItem(getLessonStorageKey(), JSON.stringify(nextCompleted));
+    } catch {
+      // ignore localStorage failures
+    }
+
+    const computedProgress = calculateProgressFromCompletedLessons(nextCompleted, lessons);
+    await handleUpdateProgress(computedProgress);
+  };
+
+  // Auto-mark video lesson after 30 seconds of viewing (user can still manually complete)
+  useEffect(() => {
+    const timers: Record<string, NodeJS.Timeout> = {};
+
+    lessons.forEach((lesson) => {
+      const lessonId = String(lesson.id);
+      
+      // Only auto-mark video and text lessons (not PDF/PPT that require download)
+      if (['video', 'text'].includes(lesson.type) && lesson.content && isEnrolled && userRole === 'student' && !completedLessonIds.includes(lessonId)) {
+        // Start countdown at 30 seconds
+        if (!autoMarkCountdown[lessonId]) {
+          setAutoMarkCountdown((prev) => ({ ...prev, [lessonId]: 30 }));
+        }
+
+        timers[lessonId] = setInterval(() => {
+          setAutoMarkCountdown((prev) => {
+            const current = prev[lessonId] ?? 0;
+            if (current <= 1) {
+              // Auto-mark when countdown reaches 0
+              if (!completedLessonIds.includes(lessonId)) {
+                handleCompleteLesson(lessonId);
+              }
+              return { ...prev, [lessonId]: 0 };
+            }
+            return { ...prev, [lessonId]: current - 1 };
+          });
+        }, 1000);
+      }
+    });
+
+    return () => {
+      Object.values(timers).forEach((timer) => clearInterval(timer));
+    };
+  }, [lessons, isEnrolled, userRole, completedLessonIds, enrollmentId]);
 
   const handlePostDiscussion = async () => {
     const question = discussionDraft.trim();
@@ -297,6 +418,15 @@ export function CourseDetails({ id }: CourseDetailsProps) {
   const syllabus = course.syllabus || [];
   const syllabusMaterials = Array.isArray(course.syllabusMaterials) ? course.syllabusMaterials : [];
   const hasSyllabusFile = Boolean(course.syllabusUrl);
+  const hasSyllabusMaterials = syllabusMaterials.length > 0;
+  const learningOutcomes = String(course.outcomes || '')
+    .split(/\r?\n|•|\u2022/)
+    .map((item: string) => item.trim())
+    .filter(Boolean);
+  const courseRequirements = String(course.requirements || '')
+    .split(/\r?\n|•|\u2022/)
+    .map((item: string) => item.trim())
+    .filter(Boolean);
   const reviews = course.reviews || [];
 
   return (
@@ -341,7 +471,9 @@ export function CourseDetails({ id }: CourseDetailsProps) {
                 <h2 className="text-2xl font-bold mb-4 text-gray-900">What You&apos;ll Learn</h2>
                 <p className="text-gray-700 leading-relaxed mb-6">{course.description}</p>
                 <div className="grid md:grid-cols-2 gap-4">
-                  {['Master the fundamentals', 'Build real-world projects', 'Hands-on practice', 'Certificate of completion'].map((item, i) => (
+                  {(learningOutcomes.length > 0
+                    ? learningOutcomes
+                    : ['Master the fundamentals', 'Build real-world projects', 'Hands-on practice', 'Certificate of completion']).map((item, i) => (
                     <div key={i} className="flex items-start gap-3">
                       <div className="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center mt-1 flex-shrink-0">
                         <span className="text-green-600 text-sm">✓</span>
@@ -352,6 +484,22 @@ export function CourseDetails({ id }: CourseDetailsProps) {
                 </div>
               </CardContent>
             </Card>
+
+            {courseRequirements.length > 0 && (
+              <Card className="bg-white">
+                <CardContent className="p-6">
+                  <h2 className="text-2xl font-bold mb-4 text-gray-900">Requirements</h2>
+                  <ul className="space-y-2">
+                    {courseRequirements.map((item: string, index: number) => (
+                      <li key={`${item}-${index}`} className="flex items-start gap-2 text-gray-700">
+                        <span className="mt-1 text-[#1E3A8A]">•</span>
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </CardContent>
+              </Card>
+            )}
 
             {syllabus.length > 0 && (
               <Card className="bg-white">
@@ -385,22 +533,30 @@ export function CourseDetails({ id }: CourseDetailsProps) {
               </Card>
             )}
 
-            {hasSyllabusFile && (
+            {(hasSyllabusFile || hasSyllabusMaterials) && (
               <Card className="bg-white">
                 <CardContent className="p-6">
-                  <h2 className="text-2xl font-bold mb-3 text-gray-900">Syllabus File</h2>
-                  <p className="text-sm text-gray-600 mb-4">Download or view the course syllabus provided by the teacher.</p>
-                  <a
-                    href={course.syllabusUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center rounded-md bg-[#1E3A8A] px-4 py-2 text-sm font-medium text-white hover:bg-[#1E3A8A]/90"
-                  >
-                    Open {course.syllabusName || 'Syllabus'}
-                  </a>
-                  {syllabusMaterials.length > 0 ? (
+                  <h2 className="text-2xl font-bold mb-3 text-gray-900">
+                    {hasSyllabusFile ? 'Syllabus File' : 'Course Materials'}
+                  </h2>
+                  <p className="text-sm text-gray-600 mb-4">
+                    {hasSyllabusFile
+                      ? 'Download or view the course syllabus provided by the teacher.'
+                      : 'Download or view course materials provided by the teacher.'}
+                  </p>
+                  {hasSyllabusFile ? (
+                    <a
+                      href={course.syllabusUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center rounded-md bg-[#1E3A8A] px-4 py-2 text-sm font-medium text-white hover:bg-[#1E3A8A]/90"
+                    >
+                      Open {course.syllabusName || 'Syllabus'}
+                    </a>
+                  ) : null}
+                  {hasSyllabusMaterials ? (
                     <div className="mt-4 space-y-2">
-                      <p className="text-sm font-medium text-gray-900">More Materials</p>
+                      <p className="text-sm font-medium text-gray-900">{hasSyllabusFile ? 'More Materials' : 'Materials'}</p>
                       <div className="space-y-2">
                         {syllabusMaterials.map((material: any, index: number) => (
                           <a
@@ -442,19 +598,28 @@ export function CourseDetails({ id }: CourseDetailsProps) {
                         <div key={lesson.id} className="border rounded-lg p-4">
                           <div className="flex items-center justify-between gap-3 mb-2">
                             <h3 className="font-semibold text-gray-900">{lesson.title}</h3>
-                            <Badge variant="outline">{String(lesson.type || 'text').toUpperCase()}</Badge>
+                            <div className="flex items-center gap-2">
+                              {completedLessonIds.includes(String(lesson.id)) ? (
+                                <Badge className="bg-green-100 text-green-700">Completed</Badge>
+                              ) : null}
+                              <Badge variant="outline">{String(lesson.type || 'text').toUpperCase()}</Badge>
+                            </div>
                           </div>
                           {lesson.description ? <p className="text-sm text-gray-700 mb-3">{lesson.description}</p> : null}
 
                           {lesson.type === 'video' && lesson.content ? (
-                            <a
-                              href={lesson.content}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-sm text-[#1E3A8A] underline"
-                            >
-                              Watch video
-                            </a>
+                            <div className="space-y-3">
+                              <div className="aspect-video w-full overflow-hidden rounded-md border bg-black">
+                                <iframe
+                                  src={normalizeVideoUrl(String(lesson.content))}
+                                  title={`${lesson.title} video lesson`}
+                                  className="h-full w-full"
+                                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                                  allowFullScreen
+                                />
+                              </div>
+
+                            </div>
                           ) : null}
 
                           {(lesson.type === 'pdf' || lesson.type === 'ppt') && lesson.fileUrl ? (
@@ -470,6 +635,31 @@ export function CourseDetails({ id }: CourseDetailsProps) {
 
                           {lesson.type === 'text' && lesson.content ? (
                             <p className="text-sm text-gray-700 whitespace-pre-wrap">{lesson.content}</p>
+                          ) : null}
+
+                          {isEnrolled && userRole === 'student' ? (
+                            <div className="mt-4 space-y-2">
+                              {completedLessonIds.includes(String(lesson.id)) ? (
+                                <Button disabled size="sm" className="bg-green-600 text-white hover:bg-green-600">
+                                  Lesson Completed
+                                </Button>
+                              ) : (
+                                <>
+                                  <Button
+                                    size="sm"
+                                    className="bg-[#1E3A8A] hover:bg-[#1E3A8A]/90 text-white"
+                                    onClick={() => handleCompleteLesson(String(lesson.id))}
+                                  >
+                                    Mark as Complete
+                                  </Button>
+                                  {autoMarkCountdown[String(lesson.id)] && autoMarkCountdown[String(lesson.id)] > 0 && (
+                                    <p className="text-xs text-gray-600">
+                                      Auto-marking in {autoMarkCountdown[String(lesson.id)]}s...
+                                    </p>
+                                  )}
+                                </>
+                              )}
+                            </div>
                           ) : null}
                         </div>
                       ))}
@@ -590,6 +780,7 @@ export function CourseDetails({ id }: CourseDetailsProps) {
                       <Label htmlFor="reviewRating">Rating</Label>
                       <select
                         id="reviewRating"
+                        title="Review rating"
                         className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
                         value={reviewRating}
                         onChange={(e) => setReviewRating(Number(e.target.value))}

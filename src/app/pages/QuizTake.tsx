@@ -47,7 +47,34 @@ export function QuizTake({ courseId, quizId }: QuizTakeProps) {
         }),
       });
       const data = await res.json();
-      if (data.success) setResult(data.attempt);
+      if (data.success) {
+        setResult(data.attempt);
+        
+        // Update course progress if quiz passed
+        if (data.attempt.passed) {
+          try {
+            // Get enrollment to update progress
+            const enrollRes = await fetch(`/api/student/enrollments`);
+            const enrollData = await enrollRes.json();
+            const enrollment = enrollData.find((e: any) => e.courseId === courseId);
+            
+            if (enrollment) {
+              // Increment progress based on quiz completion
+              const currentProgress = Number(enrollment.progress || 0);
+              const newProgress = Math.min(100, currentProgress + 10); // Add 10% per passed quiz
+              
+              await fetch(`/api/student/enrollments/${enrollment._id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ progress: newProgress }),
+              });
+            }
+          } catch (err) {
+            console.warn('Failed to update progress after quiz:', err);
+            // Continue anyway - quiz was still graded
+          }
+        }
+      }
     } finally {
       setSubmitting(false);
     }
@@ -104,6 +131,13 @@ export function QuizTake({ courseId, quizId }: QuizTakeProps) {
               <p className="text-center text-gray-600">
                 Passing score: {quiz.passingScore}%
               </p>
+              {result.passed && (
+                <div className="bg-green-50 border border-green-200 rounded p-3">
+                  <p className="text-sm text-green-700">
+                    ✓ Quiz completed! Your course progress has been updated.
+                  </p>
+                </div>
+              )}
               <div className="flex justify-center gap-4 pt-4">
                 <Link href={`/courses/${courseId}`}>
                   <Button className="bg-[#1E3A8A]">Back to Course</Button>

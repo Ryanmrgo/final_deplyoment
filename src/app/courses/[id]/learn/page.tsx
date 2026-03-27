@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from 'react';
+import { use, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/app/components/ui/button';
 import { LessonListSidebar } from '@/app/components/LessonListSidebar';
@@ -21,8 +21,8 @@ type ProgressItem = {
   isCompleted: boolean;
 };
 
-export default function CourseLearnPage({ params }: { params: { id: string } }) {
-  const courseId = params.id;
+export default function CourseLearnPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id: courseId } = use(params);
   const [lessons, setLessons] = useState<LessonItem[]>([]);
   const [progressItems, setProgressItems] = useState<ProgressItem[]>([]);
   const [currentLessonId, setCurrentLessonId] = useState<string | null>(null);

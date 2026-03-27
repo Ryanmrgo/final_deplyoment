@@ -1,27 +1,36 @@
-import { auth } from '@clerk/nextjs/server';
+import { auth, clerkClient } from '@clerk/nextjs/server';
 import { redirect } from 'next/navigation';
-import connectDB from '@/config/db';
-import User from '@/models/User';
+
+type DashboardRole = 'teacher' | 'student' | 'admin';
+
+function normalizeRole(value: unknown): DashboardRole | undefined {
+  if (typeof value !== 'string') return undefined;
+  if (value === 'teacher' || value === 'student' || value === 'admin') return value;
+  return undefined;
+}
 
 export default async function DashboardPage() {
-  const { userId, sessionClaims } = await auth();
+  const { userId } = await auth();
 
   if (!userId) {
     redirect('/auth/sign-in');
   }
 
-  let role = (sessionClaims?.publicMetadata as any)?.role as string | undefined;
-
-  // Fallback: check MongoDB if role not in session (Clerk session can be stale after sign-in)
-  if (!role) {
-    try {
-      await connectDB();
-      const user = await User.findById(userId).lean();
-      if (user?.role) role = user.role;
-    } catch {
-      // Ignore DB errors
-    }
+  // Fetch user data directly from Clerk to get publicMetadata
+  let role: DashboardRole | undefined;
+  try {
+    const client = await clerkClient();
+    const user = await client.users.getUser(userId);
+    role = normalizeRole(user.publicMetadata?.role) || normalizeRole(user.unsafeMetadata?.role);
+  } catch (error) {
+    console.error('[Dashboard Page] Error fetching user:', error);
   }
+
+  // Debug logging
+  console.log('[Dashboard Page Debug]', {
+    userId,
+    role
+  });
 
   if (!role) {
     redirect('/dashboard/onboarding');

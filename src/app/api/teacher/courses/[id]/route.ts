@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import connectDB from '@/config/db';
 import Course from '@/models/Course';
+import Lesson from '@/models/Lesson';
 import { getEffectiveRole } from '@/lib/auth';
 import { uploadToCloudinary } from '@/lib/cloudinary';
 
@@ -107,8 +108,9 @@ export async function PATCH(
 
     const updates: Record<string, unknown> = { updatedAt: new Date() };
 
-    if (body.status && ['Draft', 'Published', 'Archived'].includes(body.status)) {
-      updates.status = body.status;
+    const requestedStatus = typeof body.status === 'string' ? body.status : '';
+    if (['Draft', 'Published', 'Archived'].includes(requestedStatus)) {
+      updates.status = requestedStatus;
     }
     if (body.title !== undefined) updates.title = body.title;
     if (body.description !== undefined) updates.description = body.description;
@@ -232,6 +234,33 @@ export async function PATCH(
         resourceType: 'image',
       });
       updates.image = thumbnailUpload.url;
+    }
+
+    const nextStatus = String((updates.status ?? (course as any).status ?? 'Draft'));
+    if (nextStatus === 'Published') {
+      const nextSyllabusUrl = String((updates.syllabusUrl ?? (course as any).syllabusUrl ?? '')).trim();
+      const nextSyllabusMaterialsRaw = Array.isArray(updates.syllabusMaterials)
+        ? updates.syllabusMaterials
+        : (course as any).syllabusMaterials;
+      const nextSyllabusMaterials = Array.isArray(nextSyllabusMaterialsRaw)
+        ? nextSyllabusMaterialsRaw.filter((item: any) => item && String(item.url || '').trim())
+        : [];
+
+      const publishedLessonCount = await Lesson.countDocuments({
+        courseId: id,
+        isPublished: true,
+      });
+
+      const hasVisibleContent = Boolean(nextSyllabusUrl) || nextSyllabusMaterials.length > 0 || publishedLessonCount > 0;
+      if (!hasVisibleContent) {
+        return NextResponse.json(
+          {
+            error:
+              'Cannot publish an empty course. Add at least one syllabus material or one published lesson before publishing.',
+          },
+          { status: 400 }
+        );
+      }
     }
 
     Object.assign(course, updates);

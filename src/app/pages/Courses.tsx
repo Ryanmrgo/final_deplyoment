@@ -23,6 +23,7 @@ type CourseItem = {
   students: number;
   level: string;
   duration: string;
+  lessonsCount?: number;
   image?: string;
   userProgress?: number;
 };
@@ -181,7 +182,7 @@ export function Courses() {
         <div className="container mx-auto px-4">
           <h1 className="text-4xl font-bold mb-4">Explore Our Free Courses</h1>
           <p className="text-xl text-gray-200">
-            Discover {courses.length}+ courses across multiple categories. All completely free!
+            Discover {courses.length} published courses across multiple categories. All completely free.
           </p>
         </div>
       </section>
@@ -248,13 +249,16 @@ export function Courses() {
             )}
           </p>
           {/* Show enrolled courses count */}
-          <div className="mt-2">
-            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-              <span className="font-semibold">
-                {filteredCourses.filter((course) => Boolean(enrollments[course.id])).length}
-              </span> courses enrolled
-            </Badge>
-          </div>
+          {userRole === 'student' && (
+            <div className="mt-2">
+              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                <span className="font-semibold">
+                  {filteredCourses.filter((course) => Boolean(enrollments[course.id])).length}
+                </span>{' '}
+                courses enrolled
+              </Badge>
+            </div>
+          )}
         </div>
 
         {/* Course Grid */}

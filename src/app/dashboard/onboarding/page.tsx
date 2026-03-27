@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useSession, useUser } from '@clerk/nextjs';
 import { useRouter } from 'next/navigation';
 
@@ -10,32 +10,6 @@ export default function OnboardingPage() {
   const router = useRouter();
   const [selected, setSelected] = useState<'teacher' | 'student' | null>(null);
   const [loading, setLoading] = useState(false);
-  const [checkingExistingRole, setCheckingExistingRole] = useState(true);
-
-  useEffect(() => {
-    if (!isLoaded) return;
-    if (!user) {
-      setCheckingExistingRole(false);
-      return;
-    }
-
-    const clerkRole = (user.publicMetadata?.role || user.unsafeMetadata?.role) as string | undefined;
-    if (clerkRole && ['teacher', 'student', 'admin'].includes(clerkRole)) {
-      router.replace(`/dashboard/${clerkRole}`);
-      return;
-    }
-
-    fetch('/api/user/profile')
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data?.role && ['teacher', 'student', 'admin'].includes(data.role)) {
-          router.replace(`/dashboard/${data.role}`);
-          return;
-        }
-        setCheckingExistingRole(false);
-      })
-      .catch(() => setCheckingExistingRole(false));
-  }, [isLoaded, user, router]);
 
   const handleRoleSelect = async (role: 'teacher' | 'student') => {
     if (!user) return;
@@ -52,9 +26,27 @@ export default function OnboardingPage() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        console.error('Failed to update role:', errorData);
-        throw new Error('Failed to update role');
+        let errorData: unknown = null;
+        try {
+          errorData = await response.json();
+        } catch {
+          errorData = await response.text();
+        }
+
+        const errorMessage =
+          typeof errorData === 'object' &&
+          errorData !== null &&
+          'error' in errorData &&
+          typeof (errorData as { error?: unknown }).error === 'string'
+            ? (errorData as { error: string }).error
+            : `Request failed with status ${response.status}`;
+
+        console.error('Failed to update role:', {
+          status: response.status,
+          statusText: response.statusText,
+          data: errorData,
+        });
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();
@@ -78,7 +70,7 @@ export default function OnboardingPage() {
     }
   };
 
-  if (!isLoaded || checkingExistingRole) {
+  if (!isLoaded) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <p className="text-slate-600">Loading...</p>
