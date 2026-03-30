@@ -3,48 +3,18 @@ import { getEffectiveRole } from '@/lib/auth';
 import { uploadToCloudinary } from '@/lib/cloudinary';
 import { saveFileLocally } from '@/lib/localUpload';
 import Assignment from '@/models/Assignment';
-import mongoose from 'mongoose';
 import { NextResponse } from 'next/server';
 
-export async function GET(req: Request) {
+export async function PATCH(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
   const { userId, role } = await getEffectiveRole();
-
-  if (!userId) {
+  if (!userId || role !== 'teacher') {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  if (role !== 'teacher') {
-    return NextResponse.json({ error: 'Teacher role required' }, { status: 403 });
-  }
-
-  try {
-    await connectDB();
-    const { searchParams } = new URL(req.url);
-    const courseId = searchParams.get('courseId');
-
-    const query: any = { instructorId: userId };
-    if (courseId) {
-      query.courseId = new mongoose.Types.ObjectId(courseId);
-    }
-
-    const assignments = await Assignment.find(query).sort({ createdAt: -1 });
-    return NextResponse.json({ items: assignments });
-  } catch (error) {
-    console.error('Error fetching assignments:', error);
-    return NextResponse.json({ error: 'Failed to fetch assignments' }, { status: 500 });
-  }
-}
-
-export async function POST(req: Request) {
-  const { userId, role } = await getEffectiveRole();
-
-  if (!userId) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  if (role !== 'teacher') {
-    return NextResponse.json({ error: 'Teacher role required' }, { status: 403 });
-  }
+  const { id } = await params;
 
   try {
     const contentType = req.headers.get('content-type') || '';
@@ -65,10 +35,6 @@ export async function POST(req: Request) {
       url = (formData.get('url') as string) || '';
     } else {
       body = await req.json();
-    }
-
-    if (!body?.title || !body?.courseId) {
-      return NextResponse.json({ error: 'title and courseId are required' }, { status: 400 });
     }
 
     await connectDB();
@@ -92,23 +58,49 @@ export async function POST(req: Request) {
       }
     }
 
-    const assignment = new Assignment({
-      title: body.title,
-      description: body.description || '',
-      courseId: new mongoose.Types.ObjectId(body.courseId as string),
-      instructorId: userId,
-      dueDate: body.dueDate || new Date(),
-      maxPoints: body.maxPoints || 100,
-      instructions: body.instructions || '',
-      isPublished: false,
-      attachments: uploadedFiles,
-      url: url || undefined,
-      allowLateSubmission: body.allowLateSubmission === 'true' || body.allowLateSubmission === true,
-    });
-    await assignment.save();
+    const allowedFields = ['title', 'description', 'dueDate', 'maxPoints', 'allowLateSubmission', 'isPublished', 'instructions'];
+    const update: any = { updatedAt: new Date() };
+    for (const field of allowedFields) {
+      if (body[field] !== undefined) update[field] = body[field];
+    }
+
+    // Handle attachments and URL
+    if (uploadedFiles.length > 0) {
+      update.attachments = uploadedFiles;
+    }
+    if (url) {
+      update.url = url;
+    }
+
+    const assignment = await Assignment.findOneAndUpdate(
+      { _id: id, instructorId: userId },
+      update,
+      { new: true }
+    );
+    if (!assignment) {
+      return NextResponse.json({ error: 'Assignment not found' }, { status: 404 });
+    }
     return NextResponse.json({ success: true, assignment });
   } catch (error) {
-    console.error('Error creating assignment:', error);
-    return NextResponse.json({ error: 'Failed to create assignment' }, { status: 500 });
+    console.error('Error updating assignment:', error);
+    return NextResponse.json({ error: 'Failed to update assignment' }, { status: 500 });
   }
+}
+
+export async function DELETE(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { userId, role } = await getEffectiveRole();
+  if (!userId || role !== 'teacher') {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const { id } = await params;
+  await connectDB();
+  const assignment = await Assignment.findOneAndDelete({ _id: id, instructorId: userId });
+  if (!assignment) {
+    return NextResponse.json({ error: 'Assignment not found' }, { status: 404 });
+  }
+  return NextResponse.json({ success: true });
 }

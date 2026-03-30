@@ -1,19 +1,20 @@
 "use client";
 
-import { useState, useEffect } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { Card, CardContent } from '@/app/components/ui/card';
-import { Button } from '@/app/components/ui/button';
-import { Badge } from '@/app/components/ui/badge';
-import { Progress } from '@/app/components/ui/progress';
+import { useAuth } from '@/app/components/AuthContext';
+import { FileOrUrlInput } from '@/app/components/FileOrUrlInput';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/app/components/ui/accordion';
 import { Avatar, AvatarFallback } from '@/app/components/ui/avatar';
+import { Badge } from '@/app/components/ui/badge';
+import { Button } from '@/app/components/ui/button';
+import { Card, CardContent } from '@/app/components/ui/card';
 import { Input } from '@/app/components/ui/input';
-import { Textarea } from '@/app/components/ui/textarea';
 import { Label } from '@/app/components/ui/label';
-import { Star, Users, Clock, Award, BookOpen, ChevronRight, CheckCircle, MessageSquare, PlayCircle } from 'lucide-react';
-import { useAuth } from '@/app/components/AuthContext';
+import { Progress } from '@/app/components/ui/progress';
+import { Textarea } from '@/app/components/ui/textarea';
+import { Award, BookOpen, CheckCircle, ChevronRight, Clock, FileText, MessageSquare, PlayCircle, Star, Users } from 'lucide-react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
 interface CourseDetailsProps {
@@ -34,6 +35,11 @@ export function CourseDetails({ id }: CourseDetailsProps) {
   const [lessons, setLessons] = useState<any[]>([]);
   const [lessonsLoading, setLessonsLoading] = useState(false);
   const [lessonsError, setLessonsError] = useState('');
+  const [assignments, setAssignments] = useState<any[]>([]);
+  const [assignmentsLoading, setAssignmentsLoading] = useState(false);
+  const [submissions, setSubmissions] = useState<any[]>([]);
+  const [submissionDrafts, setSubmissionDrafts] = useState<Record<string, { content: string; files: File[]; url: string }>>({});
+  const [submitting, setSubmitting] = useState<Record<string, boolean>>({});
   const [discussions, setDiscussions] = useState<any[]>([]);
   const [discussionLoading, setDiscussionLoading] = useState(false);
   const [discussionDraft, setDiscussionDraft] = useState('');
@@ -48,6 +54,18 @@ export function CourseDetails({ id }: CourseDetailsProps) {
   const [completedLessonIds, setCompletedLessonIds] = useState<string[]>([]);
   const [autoMarkingLessons, setAutoMarkingLessons] = useState<Set<string>>(new Set());
   const [autoMarkCountdown, setAutoMarkCountdown] = useState<Record<string, number>>({});
+
+  const setSubmissionDraft = (assignmentId: string, field: 'content' | 'files' | 'url', value: any) => {
+    setSubmissionDrafts(prev => ({
+      ...prev,
+      [assignmentId]: {
+        content: prev[assignmentId]?.content || '',
+        files: prev[assignmentId]?.files || [],
+        url: prev[assignmentId]?.url || '',
+        [field]: value,
+      },
+    }));
+  };
 
   const normalizeVideoUrl = (url: string) => {
     try {
@@ -93,6 +111,61 @@ export function CourseDetails({ id }: CourseDetailsProps) {
     if (totalLessons === 0) return 0;
     const completedCount = currentLessons.filter((lesson) => completedIds.includes(String(lesson.id))).length;
     return Math.round((completedCount / totalLessons) * 100);
+  };
+
+  useEffect(() => {
+    if (isEnrolled && userRole === 'student') {
+      const fetchData = async () => {
+        setAssignmentsLoading(true);
+        try {
+          const [assignRes, subRes] = await Promise.all([
+            fetch(`/api/student/assignments?courseId=${id}`),
+            fetch(`/api/student/submissions?courseId=${id}`)
+          ]);
+          const assignData = await assignRes.json();
+          const subData = await subRes.json();
+          setAssignments(assignData.items || []);
+          setSubmissions(subData.items || []);
+        } catch (error) {
+          console.error(error);
+        } finally {
+          setAssignmentsLoading(false);
+        }
+      };
+      fetchData();
+    }
+  }, [isEnrolled, userRole, id]);
+
+  const submitAssignment = async (assignmentId: string, courseId: string) => {
+    const draft = submissionDrafts[assignmentId];
+    if (!draft) return;
+
+    setSubmitting(prev => ({ ...prev, [assignmentId]: true }));
+    try {
+      const formData = new FormData();
+      formData.append('assignmentId', assignmentId);
+      formData.append('courseId', courseId);
+      if (draft.content) formData.append('content', draft.content);
+      if (draft.url) formData.append('url', draft.url);
+      for (const file of draft.files) {
+        formData.append('attachments', file);
+      }
+
+      const res = await fetch('/api/student/submissions', { method: 'POST', body: formData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      // Refresh submissions
+      const subRes = await fetch(`/api/student/submissions?courseId=${courseId}`);
+      const subData = await subRes.json();
+      setSubmissions(subData.items || []);
+      setSubmissionDrafts(prev => ({ ...prev, [assignmentId]: { content: '', files: [], url: '' } }));
+      toast.success('Assignment submitted!');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to submit');
+    } finally {
+      setSubmitting(prev => ({ ...prev, [assignmentId]: false }));
+    }
   };
 
   useEffect(() => {
@@ -251,7 +324,7 @@ export function CourseDetails({ id }: CourseDetailsProps) {
 
     lessons.forEach((lesson) => {
       const lessonId = String(lesson.id);
-      
+
       // Only auto-mark video and text lessons (not PDF/PPT that require download)
       if (['video', 'text'].includes(lesson.type) && lesson.content && isEnrolled && userRole === 'student' && !completedLessonIds.includes(lessonId)) {
         // Start countdown at 30 seconds
@@ -373,11 +446,11 @@ export function CourseDetails({ id }: CourseDetailsProps) {
       setCourse((prev: any) =>
         prev
           ? {
-              ...prev,
-              reviews: data.reviews || prev.reviews,
-              rating: data.rating,
-              reviewCount: data.reviewCount,
-            }
+            ...prev,
+            reviews: data.reviews || prev.reviews,
+            rating: data.rating,
+            reviewCount: data.reviewCount,
+          }
           : prev
       );
       setReviewMessage('Review submitted successfully.');
@@ -474,13 +547,13 @@ export function CourseDetails({ id }: CourseDetailsProps) {
                   {(learningOutcomes.length > 0
                     ? learningOutcomes
                     : ['Master the fundamentals', 'Build real-world projects', 'Hands-on practice', 'Certificate of completion']).map((item, i) => (
-                    <div key={i} className="flex items-start gap-3">
-                      <div className="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center mt-1 flex-shrink-0">
-                        <span className="text-green-600 text-sm">✓</span>
+                      <div key={i} className="flex items-start gap-3">
+                        <div className="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center mt-1 flex-shrink-0">
+                          <span className="text-green-600 text-sm">✓</span>
+                        </div>
+                        <span className="text-gray-700">{item}</span>
                       </div>
-                      <span className="text-gray-700">{item}</span>
-                    </div>
-                  ))}
+                    ))}
                 </div>
               </CardContent>
             </Card>
@@ -749,6 +822,87 @@ export function CourseDetails({ id }: CourseDetailsProps) {
                           ))}
                         </div>
                       ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {isEnrolled && userRole === 'student' && (
+              <Card className="bg-white">
+                <CardContent className="p-6 space-y-4">
+                  <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+                    <FileText className="w-6 h-6 text-[#1E3A8A]" />
+                    Assignments
+                  </h2>
+
+                  {assignmentsLoading ? (
+                    <p className="text-sm text-gray-600">Loading assignments...</p>
+                  ) : assignments.length === 0 ? (
+                    <p className="text-sm text-gray-600">No assignments yet.</p>
+                  ) : (
+                    <div className="space-y-4">
+                      {assignments.map((ass: any) => {
+                        const submission = submissions.find((s: any) => s.assignmentId === ass._id);
+                        const isSubmitted = !!submission;
+                        const isGraded = submission?.status === 'Graded';
+                        return (
+                          <div key={ass._id} className="border rounded-lg p-4">
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <h3 className="font-semibold text-gray-900">{ass.title}</h3>
+                                <p className="text-sm text-gray-600 mt-1">{ass.description}</p>
+                                <p className="text-xs text-gray-500 mt-2">
+                                  Due: {new Date(ass.dueDate).toLocaleDateString()} • Max Points: {ass.maxPoints}
+                                </p>
+                              </div>
+                              {isSubmitted && (
+                                <Badge className={isGraded ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}>
+                                  {isGraded ? 'Graded' : 'Submitted'}
+                                </Badge>
+                              )}
+                            </div>
+
+                            {!isSubmitted ? (
+                              <div className="mt-4 space-y-3">
+                                <Textarea
+                                  placeholder="Your submission content (optional)"
+                                  value={submissionDrafts[ass._id]?.content || ''}
+                                  onChange={(e) => setSubmissionDraft(ass._id, 'content', e.target.value)}
+                                />
+                                <FileOrUrlInput
+                                  label="Attach your work"
+                                  accept=".pdf,.doc,.docx,.txt"
+                                  multiple={true}
+                                  maxSizeMB={20}
+                                  onFilesChange={(files: File[]) => setSubmissionDraft(ass._id, 'files', files)}
+                                  onUrlChange={(url: string) => setSubmissionDraft(ass._id, 'url', url)}
+                                  allowUrl={true}
+                                  allowFiles={true}
+                                />
+                                <Button
+                                  className="bg-[#F59E0B] hover:bg-[#F59E0B]/90 text-white"
+                                  onClick={() => submitAssignment(ass._id, ass.courseId)}
+                                  disabled={submitting[ass._id]}
+                                >
+                                  {submitting[ass._id] ? 'Submitting...' : 'Submit Assignment'}
+                                </Button>
+                              </div>
+                            ) : (
+                              <div className="mt-4 text-sm">
+                                {isGraded ? (
+                                  <div className="bg-gray-50 p-3 rounded">
+                                    <p>Grade: {submission.grade?.points} / {submission.grade?.maxPoints}</p>
+                                    <p>Feedback: {submission.grade?.feedback || 'No feedback'}</p>
+                                  </div>
+                                ) : (
+                                  <p className="text-gray-600">Your submission has been recorded. Awaiting grading.</p>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </CardContent>

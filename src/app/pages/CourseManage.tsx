@@ -1,31 +1,35 @@
 "use client";
 
-import { useState, useEffect, useRef } from 'react';
-import type { ChangeEvent } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card';
-import { Button } from '@/app/components/ui/button';
+import { useAuth } from '@/app/components/AuthContext';
+import { ConfirmDialog } from '@/app/components/confirm-dialog';
+import { FileOrUrlInput } from '@/app/components/FileOrUrlInput';
 import { Badge } from '@/app/components/ui/badge';
+import { Button } from '@/app/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card';
+import { DateTimePicker } from '@/app/components/ui/date-time-picker';
+import {
+    Dialog,
+    DialogContent,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/app/components/ui/dialog';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
-import { Textarea } from '@/app/components/ui/textarea';
 import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/app/components/ui/dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
 } from '@/app/components/ui/select';
-import { ArrowLeft, Save, Eye, EyeOff, Plus, Trash2, MessageSquare, ArrowUp, ArrowDown } from 'lucide-react';
-import { useAuth } from '@/app/components/AuthContext';
+import { Textarea } from '@/app/components/ui/textarea';
+import { ArrowDown, ArrowLeft, ArrowUp, Eye, EyeOff, MessageSquare, Plus, Save, Trash2 } from 'lucide-react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import type { ChangeEvent } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
 
 interface CourseManageProps {
   courseId: string;
@@ -133,6 +137,18 @@ export function CourseManage({ courseId }: CourseManageProps) {
   const [quizMessage, setQuizMessage] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
 
+  const [assignments, setAssignments] = useState<any[]>([]);
+  const [assignmentsLoading, setAssignmentsLoading] = useState(false);
+  const [assignmentTitle, setAssignmentTitle] = useState('');
+  const [assignmentDescription, setAssignmentDescription] = useState('');
+  const [assignmentMaxPoints, setAssignmentMaxPoints] = useState('100');
+  const [assignmentDueDate, setAssignmentDueDate] = useState('');
+  const [assignmentAllowLate, setAssignmentAllowLate] = useState(true);
+  const [assignmentFiles, setAssignmentFiles] = useState<File[]>([]);
+  const [assignmentUrl, setAssignmentUrl] = useState('');
+  const [assignmentCreating, setAssignmentCreating] = useState(false);
+  const [assignmentMessage, setAssignmentMessage] = useState<string | null>(null);
+
   const [lessons, setLessons] = useState<LessonItem[]>([]);
   const [lessonTitle, setLessonTitle] = useState('');
   const [lessonSectionTitle, setLessonSectionTitle] = useState('');
@@ -144,11 +160,30 @@ export function CourseManage({ courseId }: CourseManageProps) {
   const [lessonSaving, setLessonSaving] = useState(false);
   const [lessonMessage, setLessonMessage] = useState<string | null>(null);
   const [editingLessonId, setEditingLessonId] = useState<string | null>(null);
+  const [previewLesson, setPreviewLesson] = useState<any>(null);
+  const [lessonPreviewOpen, setLessonPreviewOpen] = useState(false);
 
   const [discussions, setDiscussions] = useState<DiscussionItem[]>([]);
   const [discussionLoading, setDiscussionLoading] = useState(false);
   const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
   const [discussionMessage, setDiscussionMessage] = useState<string | null>(null);
+
+  // Grading modal state
+  const [gradingAssignmentId, setGradingAssignmentId] = useState<string | null>(null);
+  const [submissionsList, setSubmissionsList] = useState<any[]>([]);
+  const [submissionsLoading, setSubmissionsLoading] = useState(false);
+  const [gradingData, setGradingData] = useState<Record<string, { points: string; feedback: string }>>({});
+  const [submittingGrade, setSubmittingGrade] = useState<Record<string, boolean>>({});
+
+  const [editingQuiz, setEditingQuiz] = useState<any>(null);
+  const [previewQuiz, setPreviewQuiz] = useState<any>(null);
+  const [quizModalOpen, setQuizModalOpen] = useState(false);
+  const [quizPreviewOpen, setQuizPreviewOpen] = useState(false);
+
+  const [editingAssignment, setEditingAssignment] = useState<any>(null);
+  const [editAssignmentOpen, setEditAssignmentOpen] = useState(false);
+  const [previewAssignment, setPreviewAssignment] = useState<any>(null);
+  const [previewAssignmentOpen, setPreviewAssignmentOpen] = useState(false);
 
   const MAX_SYLLABUS_MB = 20;
   const MAX_THUMBNAIL_MB = 5;
@@ -259,6 +294,193 @@ export function CourseManage({ courseId }: CourseManageProps) {
       .finally(() => setDiscussionLoading(false));
   }, [courseId, user, userRole]);
 
+  useEffect(() => {
+    if (courseId && userRole === 'teacher') {
+      fetchAssignments();
+    }
+  }, [courseId, userRole]);
+
+  const fetchAssignments = async () => {
+    setAssignmentsLoading(true);
+    try {
+      const res = await fetch(`/api/teacher/assignments?courseId=${courseId}`);
+      const data = await res.json();
+      setAssignments(data.items || []);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setAssignmentsLoading(false);
+    }
+  };
+
+  const fetchSubmissions = async (assignmentId: string) => {
+    setSubmissionsLoading(true);
+    try {
+      const res = await fetch(`/api/student/submissions?assignmentId=${assignmentId}`);
+      const data = await res.json();
+      setSubmissionsList(data.items || []);
+      // Initialize grading data for each submission
+      const initialGrading: Record<string, { points: string; feedback: string }> = {};
+      (data.items || []).forEach((sub: any) => {
+        initialGrading[sub._id] = {
+          points: sub.grade?.points?.toString() || '',
+          feedback: sub.grade?.feedback || '',
+        };
+      });
+      setGradingData(initialGrading);
+    } catch (error) {
+      console.error('Failed to fetch submissions', error);
+    } finally {
+      setSubmissionsLoading(false);
+    }
+  };
+
+  const resetAssignmentForm = () => {
+    setAssignmentTitle('');
+    setAssignmentDescription('');
+    setAssignmentMaxPoints('100');
+    setAssignmentDueDate('');
+    setAssignmentAllowLate(true);
+    setAssignmentFiles([]);
+    setAssignmentUrl('');
+    setEditingAssignment(null);
+  };
+
+  const handleSaveAssignment = async () => {
+    if (!assignmentTitle.trim()) {
+      setAssignmentMessage('Title is required.');
+      return;
+    }
+
+    setAssignmentCreating(true);
+    setAssignmentMessage(null);
+    try {
+      const formData = new FormData();
+      formData.append('title', assignmentTitle.trim());
+      formData.append('description', assignmentDescription.trim());
+      formData.append('courseId', courseId);
+      formData.append('dueDate', assignmentDueDate || new Date().toISOString());
+      formData.append('maxPoints', String(parseInt(assignmentMaxPoints, 10) || 100));
+      formData.append('allowLateSubmission', String(assignmentAllowLate));
+      formData.append('instructions', assignmentDescription.trim());
+
+      // Add files if any
+      if (assignmentFiles.length > 0) {
+        assignmentFiles.forEach((file, index) => {
+          formData.append('files', file);
+        });
+      }
+
+      // Add URL if provided
+      if (assignmentUrl.trim()) {
+        formData.append('url', assignmentUrl.trim());
+      }
+
+      let url = '/api/teacher/assignments';
+      let method = 'POST';
+      if (editingAssignment) {
+        url = `/api/teacher/assignments/${editingAssignment._id}`;
+        method = 'PATCH';
+      }
+
+      const res = await fetch(url, { method, body: formData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to save assignment');
+
+      setAssignmentMessage(editingAssignment ? 'Assignment updated.' : 'Assignment created successfully.');
+      toast.success(editingAssignment ? 'Assignment updated' : 'Assignment created');
+      resetAssignmentForm();
+      fetchAssignments();
+      setEditAssignmentOpen(false);
+    } catch (error: any) {
+      setAssignmentMessage(error.message);
+      toast.error(error.message);
+    } finally {
+      setAssignmentCreating(false);
+    }
+  };
+
+  const handleEditAssignment = (assignment: any) => {
+    setEditingAssignment(assignment);
+    setAssignmentTitle(assignment.title);
+    setAssignmentDescription(assignment.description || '');
+    setAssignmentMaxPoints(String(assignment.maxPoints || 100));
+    setAssignmentDueDate(assignment.dueDate ? new Date(assignment.dueDate).toISOString().slice(0, 16) : '');
+    setAssignmentAllowLate(assignment.allowLateSubmission ?? true);
+    setEditAssignmentOpen(true);
+  };
+
+  const handleDeleteQuiz = async (quizId: string) => {
+    try {
+      const res = await fetch(`/api/teacher/quizzes/${quizId}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      setQuizItems((prev) => prev.filter((q) => q._id !== quizId));
+      toast.success("Quiz deleted");
+    } catch {
+      toast.error("Failed to delete quiz");
+    }
+  };
+
+  const handleDeleteAssignment = async (assignmentId: string) => {
+    try {
+      const res = await fetch(`/api/teacher/assignments/${assignmentId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error();
+      setAssignments(prev => prev.filter(a => a._id !== assignmentId));
+      toast.success('Assignment deleted');
+    } catch {
+      toast.error('Failed to delete assignment');
+    }
+  };
+
+  const togglePublishAssignment = async (assignmentId: string, isPublished: boolean) => {
+    try {
+      const res = await fetch(`/api/teacher/assignments/${assignmentId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isPublished }),
+      });
+      if (!res.ok) throw new Error();
+      setAssignments(prev => prev.map(a => a._id === assignmentId ? { ...a, isPublished } : a));
+      toast.success(isPublished ? 'Assignment published' : 'Assignment unpublished');
+    } catch {
+      toast.error('Failed to update assignment status');
+    }
+  };
+
+  const handleGradeSubmission = async (submissionId: string) => {
+    const grade = gradingData[submissionId];
+    if (!grade || grade.points === '') {
+      alert('Please enter points');
+      return;
+    }
+
+    setSubmittingGrade(prev => ({ ...prev, [submissionId]: true }));
+    try {
+      const res = await fetch(`/api/teacher/submissions/${submissionId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          points: Number(grade.points),
+          feedback: grade.feedback,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to grade');
+      // Refresh submissions list after grading
+      await fetchSubmissions(gradingAssignmentId!);
+      alert('Grade submitted successfully');
+    } catch (error: any) {
+      alert(error.message);
+    } finally {
+      setSubmittingGrade(prev => ({ ...prev, [submissionId]: false }));
+    }
+  };
+
+  const viewSubmissions = async (assignmentId: string) => {
+    setGradingAssignmentId(assignmentId);
+    await fetchSubmissions(assignmentId);
+  };
+
   const getComputedQuizMarks = () =>
     quizQuestions.reduce((sum, question) => sum + (Number(question.points) || 0), 0);
 
@@ -275,9 +497,9 @@ export function CourseManage({ courseId }: CourseManageProps) {
       prev.map((question) =>
         question.id === id
           ? {
-              ...question,
-              [field]: field === 'points' ? Number(value) || 1 : value,
-            }
+            ...question,
+            [field]: field === 'points' ? Number(value) || 1 : value,
+          }
           : question
       )
     );
@@ -291,9 +513,9 @@ export function CourseManage({ courseId }: CourseManageProps) {
     const currentText = inputElement.value;
     const blank = '___';
     const newText = currentText.slice(0, cursorPosition) + blank + currentText.slice(cursorPosition);
-    
+
     handleQuestionChange(questionId, 'questionText', newText);
-    
+
     // Set cursor position after the inserted blank
     setTimeout(() => {
       inputElement.focus();
@@ -357,6 +579,27 @@ export function CourseManage({ courseId }: CourseManageProps) {
     setQuizTotalMarks('100');
     setQuizAttempts('1');
     setQuizQuestions([createQuestion()]);
+    setEditingQuiz(null);
+  };
+
+  const handleEditQuiz = (quiz: any) => {
+    setEditingQuiz(quiz);
+    setQuizTitle(quiz.title);
+    setQuizDescription(quiz.description || '');
+    setQuizTimeLimit(String(quiz.timeLimit || 0));
+    setQuizTotalMarks(String(quiz.totalPoints || 0));
+    setQuizAttempts(String(quiz.attempts || 1));
+    // Map questions to local state format
+    const mappedQuestions = (quiz.questions || []).map((q: any, idx: number) => ({
+      id: `${Date.now()}-${idx}`,
+      questionText: q.questionText,
+      type: q.type,
+      options: q.options || (q.type === 'multiple-choice' ? ['', '', '', ''] : []),
+      correctAnswer: q.correctAnswer || '',
+      points: q.points || 1,
+    }));
+    setQuizQuestions(mappedQuestions);
+    setQuizModalOpen(true);
   };
 
   const saveQuiz = async (publishNow: boolean) => {
@@ -388,45 +631,72 @@ export function CourseManage({ courseId }: CourseManageProps) {
         isPublished: publishNow,
       };
 
-      const res = await fetch('/api/teacher/quizzes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        setQuizMessage(data.error || 'Failed to create quiz.');
-        return;
+      if (editingQuiz) {
+        const res = await fetch(`/api/teacher/quizzes/${editingQuiz._id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...payload, isPublished: publishNow }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        // update the quiz in the list
+        setQuizItems(prev => prev.map(q => q._id === editingQuiz._id ? { ...q, ...payload, isPublished: publishNow } : q));
+        setQuizMessage(publishNow ? 'Quiz updated and published.' : 'Quiz updated as draft.');
+      } else {
+        const res = await fetch('/api/teacher/quizzes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to create quiz');
+        setQuizItems(prev => [data.quiz, ...prev]);
+        setQuizMessage(publishNow ? 'Quiz published successfully.' : 'Quiz saved as draft.');
       }
-
-      setQuizItems((prev) => [data.quiz, ...prev]);
-      setQuizMessage(publishNow ? 'Quiz published successfully.' : 'Quiz saved as draft.');
-      setPreviewOpen(false);
       resetQuizBuilder();
-    } catch {
-      setQuizMessage('Failed to create quiz.');
+      setQuizModalOpen(false);
+    } catch (error: any) {
+      setQuizMessage(error.message || 'Failed to save quiz.');
     } finally {
       setQuizSaving(false);
     }
   };
 
-  const handlePublishExistingQuiz = async (quizId: string) => {
+  const togglePublishQuiz = async (quizId: string, isPublished: boolean) => {
     try {
       const res = await fetch(`/api/teacher/quizzes/${quizId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isPublished: true }),
+        body: JSON.stringify({ isPublished }),
       });
-      const data = await res.json();
-      if (!res.ok) {
-        setQuizMessage(data.error || 'Failed to publish quiz.');
-        return;
-      }
-      setQuizItems((prev) => prev.map((quiz) => (String(quiz._id) === quizId ? { ...quiz, isPublished: true } : quiz)));
-      setQuizMessage('Quiz published successfully.');
+      if (!res.ok) throw new Error();
+      setQuizItems(prev => prev.map(q => q._id === quizId ? { ...q, isPublished } : q));
+      toast.success(isPublished ? 'Quiz published' : 'Quiz unpublished');
     } catch {
-      setQuizMessage('Failed to publish quiz.');
+      toast.error('Failed to update quiz status');
+    }
+  };
+
+  const handlePreviewLesson = (lesson: any) => {
+    setPreviewLesson(lesson);
+    setLessonPreviewOpen(true);
+  };
+
+  const togglePublishLesson = async (lessonId: string, isPublished: boolean) => {
+    try {
+      const res = await fetch(`/api/teacher/courses/${courseId}/lessons/${lessonId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isPublished }),
+      });
+      if (!res.ok) throw new Error();
+      // Refresh lessons
+      const refresh = await fetch(`/api/teacher/courses/${courseId}/lessons`);
+      const refreshData = await refresh.json();
+      setLessons((refreshData.items || []).sort((a: any, b: any) => a.order - b.order));
+      toast.success(isPublished ? 'Lesson published' : 'Lesson unpublished');
+    } catch {
+      toast.error('Failed to update lesson status');
     }
   };
 
@@ -691,6 +961,16 @@ export function CourseManage({ courseId }: CourseManageProps) {
     setThumbnailFile(error ? null : file);
   };
 
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    onConfirm: () => void;
+    title?: string;
+    description?: string;
+  }>({
+    open: false,
+    onConfirm: () => { },
+  });
+
   const handleSave = async () => {
     if (!courseId) return;
     if (!title.trim() || !description.trim()) {
@@ -735,22 +1015,22 @@ export function CourseManage({ courseId }: CourseManageProps) {
         setCourse((prev: any) =>
           prev
             ? {
-                ...prev,
-                title,
-                description,
-                status: visibility,
-                category,
-                level,
-                durationHours: duration,
-                price,
-                language,
-                requirements,
-                outcomes,
-                image: updatedCourse.image || prev.image,
-                syllabusUrl: updatedCourse.syllabusUrl || prev.syllabusUrl,
-                syllabusName: updatedCourse.syllabusName || prev.syllabusName,
-                syllabusMaterials: updatedCourse.syllabusMaterials || prev.syllabusMaterials,
-              }
+              ...prev,
+              title,
+              description,
+              status: visibility,
+              category,
+              level,
+              durationHours: duration,
+              price,
+              language,
+              requirements,
+              outcomes,
+              image: updatedCourse.image || prev.image,
+              syllabusUrl: updatedCourse.syllabusUrl || prev.syllabusUrl,
+              syllabusName: updatedCourse.syllabusName || prev.syllabusName,
+              syllabusMaterials: updatedCourse.syllabusMaterials || prev.syllabusMaterials,
+            }
             : prev
         );
         if (updatedCourse.syllabusUrl) {
@@ -829,11 +1109,10 @@ export function CourseManage({ courseId }: CourseManageProps) {
 
         {saveMessage && (
           <div
-            className={`mb-6 p-4 rounded-lg ${
-              saveMessage.includes('error') || saveMessage.includes('Failed')
-                ? 'bg-red-50 text-red-800'
-                : 'bg-green-50 text-green-800'
-            }`}
+            className={`mb-6 p-4 rounded-lg ${saveMessage.includes('error') || saveMessage.includes('Failed')
+              ? 'bg-red-50 text-red-800'
+              : 'bg-green-50 text-green-800'
+              }`}
           >
             {saveMessage}
           </div>
@@ -1387,32 +1666,149 @@ export function CourseManage({ courseId }: CourseManageProps) {
 
                 <div className="space-y-3">
                   <h3 className="font-semibold text-gray-900">Created Quizzes</h3>
-                  {quizItems.length === 0 ? (
-                    <p className="text-sm text-gray-600">No quizzes yet.</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {quizItems.map((quiz) => (
-                        <div key={quiz._id} className="rounded-md border p-3 flex flex-wrap items-center justify-between gap-3">
-                          <div>
-                            <p className="font-medium text-gray-900">{quiz.title}</p>
-                            <p className="text-xs text-gray-600">
-                              {quiz.questions?.length || 0} questions • {quiz.totalPoints || 0} marks • {quiz.timeLimit || 0} min • {quiz.attempts || 1} attempts
-                            </p>
-                          </div>
-                          {quiz.isPublished ? (
-                            <span className="text-xs font-medium px-2 py-1 rounded bg-green-100 text-green-700">Published</span>
-                          ) : (
-                            <Button
-                              size="sm"
-                              className="bg-[#F59E0B] hover:bg-[#F59E0B]/90 text-white"
-                              onClick={() => handlePublishExistingQuiz(String(quiz._id))}
-                            >
-                              Publish
-                            </Button>
-                          )}
-                        </div>
-                      ))}
+                  {quizItems.map((quiz) => (
+                    <div key={quiz._id} className="rounded-md border p-3 flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="font-medium text-gray-900">{quiz.title}</p>
+                        <p className="text-xs text-gray-600">
+                          {quiz.questions?.length || 0} questions • {quiz.totalPoints || 0} marks
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button size="sm" variant="outline" onClick={() => handleEditQuiz(quiz)}>
+                          Edit
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => { setPreviewQuiz(quiz); setQuizPreviewOpen(true); }}>
+                          Preview
+                        </Button>
+                        {quiz.isPublished ? (
+                          <Button size="sm" variant="outline" className="border-yellow-600 text-yellow-700" onClick={() => togglePublishQuiz(quiz._id, false)}>
+                            Unpublish
+                          </Button>
+                        ) : (
+                          <Button size="sm" className="bg-[#F59E0B] text-white" onClick={() => togglePublishQuiz(quiz._id, true)}>
+                            Publish
+                          </Button>
+                        )}
+                        <Button size="sm" variant="outline" className="border-red-300 text-red-600" onClick={() => setConfirmDialog({ open: true, title: "Delete Quiz", description: `Delete "${quiz.title}" permanently?`, onConfirm: () => handleDeleteQuiz(quiz._id) })}>
+                          Delete
+                        </Button>
+                      </div>
                     </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+
+
+            <Card className="bg-white">
+              <CardHeader>
+                <CardTitle className="text-xl text-gray-900">Assignments</CardTitle>
+                <p className="text-sm text-gray-600">Create and manage assignments for this course.</p>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Create Assignment Form */}
+                <div className="rounded-lg border p-4 space-y-3">
+                  <h3 className="font-semibold text-gray-900">Create New Assignment</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label>Title</Label>
+                      <Input
+                        value={assignmentTitle}
+                        onChange={(e) => setAssignmentTitle(e.target.value)}
+                        placeholder="e.g. Week 1 Homework"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Max Points</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        value={assignmentMaxPoints}
+                        onChange={(e) => setAssignmentMaxPoints(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Description / Instructions</Label>
+                    <Textarea
+                      value={assignmentDescription}
+                      onChange={(e) => setAssignmentDescription(e.target.value)}
+                      placeholder="Describe the assignment"
+                      rows={3}
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label>Due Date</Label>
+                      <DateTimePicker
+                        value={assignmentDueDate}
+                        onChange={(date: Date | undefined) => setAssignmentDueDate(date ? date.toISOString() : "")}
+                        placeholder="Select due date & time"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Allow Late Submission</Label>
+                      <select
+                        className="w-full rounded-md border border-gray-300 px-3 py-2"
+                        value={assignmentAllowLate ? 'yes' : 'no'}
+                        onChange={(e) => setAssignmentAllowLate(e.target.value === 'yes')}
+                      >
+                        <option value="yes">Yes</option>
+                        <option value="no">No</option>
+                      </select>
+                    </div>
+                  </div>
+                  <Button
+                    onClick={handleSaveAssignment}
+                    disabled={assignmentCreating}
+                    className="bg-[#1E3A8A] hover:bg-[#1E3A8A]/90"
+                  >
+                    {assignmentCreating ? 'Creating...' : 'Create Assignment'}
+                  </Button>
+                  {assignmentMessage && <p className="text-sm text-gray-700">{assignmentMessage}</p>}
+                </div>
+
+                {/* List of Assignments */}
+                <div className="space-y-2">
+                  <h3 className="font-semibold text-gray-900">Existing Assignments</h3>
+                  {assignmentsLoading ? (
+                    <p className="text-sm text-gray-600">Loading...</p>
+                  ) : assignments.length === 0 ? (
+                    <p className="text-sm text-gray-600">No assignments yet.</p>
+                  ) : (
+                    assignments.map((ass: any) => (
+                      <div key={ass._id} className="rounded-md border p-3 flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <p className="font-medium text-gray-900">{ass.title}</p>
+                          <p className="text-xs text-gray-600">
+                            Due: {new Date(ass.dueDate).toLocaleDateString()} • Max Points: {ass.maxPoints}
+                          </p>
+                          <Badge className={ass.isPublished ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}>
+                            {ass.isPublished ? 'Published' : 'Draft'}
+                          </Badge>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button size="sm" variant="outline" onClick={() => { setPreviewAssignment(ass); setPreviewAssignmentOpen(true); }}>Preview</Button>
+                          <Button size="sm" variant="outline" onClick={() => handleEditAssignment(ass)}>Edit</Button>
+                          {ass.isPublished ? (
+                            <Button size="sm" variant="outline" className="border-yellow-600 text-yellow-700" onClick={() => togglePublishAssignment(ass._id, false)}>Unpublish</Button>
+                          ) : (
+                            <Button size="sm" className="bg-[#F59E0B] text-white" onClick={() => togglePublishAssignment(ass._id, true)}>Publish</Button>
+                          )}
+                          <Button size="sm" variant="outline" className="border-red-300 text-red-600" onClick={() => setConfirmDialog({ open: true, title: "Delete Assignment", description: `Delete "${ass.title}" permanently?`, onConfirm: () => handleDeleteAssignment(ass._id) })}>Delete</Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => viewSubmissions(ass._id)}
+                            className="border-[#1E3A8A] text-[#1E3A8A]"
+                          >
+                            View Submissions
+                          </Button>
+                        </div>
+                      </div>
+                    ))
                   )}
                 </div>
               </CardContent>
@@ -1452,6 +1848,8 @@ export function CourseManage({ courseId }: CourseManageProps) {
                       value={lessonDescription}
                       onChange={(e) => setLessonDescription(e.target.value)}
                       placeholder="Lesson summary"
+                      rows={6}   // increase from 4 to 6
+                      className="resize-y" // allow vertical resize
                     />
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -1559,38 +1957,32 @@ export function CourseManage({ courseId }: CourseManageProps) {
                               <p className="text-xs text-gray-600">
                                 {lesson.sectionTitle || 'General'} • {lesson.type.toUpperCase()} • {lesson.duration || 0} min
                               </p>
+                              <Badge className={lesson.isPublished ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}>
+                                {lesson.isPublished ? 'Published' : 'Draft'}
+                              </Badge>
                               {lesson.description ? (
                                 <p className="text-sm text-gray-700 mt-1">{lesson.description}</p>
                               ) : null}
                             </div>
                             <div className="flex flex-wrap gap-2">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleReorderLesson(index, 'up')}
-                                disabled={index === 0}
-                              >
+                              <Button size="sm" variant="outline" onClick={() => handleReorderLesson(index, 'up')} disabled={index === 0}>
                                 <ArrowUp className="w-4 h-4" />
                               </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleReorderLesson(index, 'down')}
-                                disabled={index === lessons.length - 1}
-                              >
+                              <Button size="sm" variant="outline" onClick={() => handleReorderLesson(index, 'down')} disabled={index === lessons.length - 1}>
                                 <ArrowDown className="w-4 h-4" />
                               </Button>
-                              <Button size="sm" variant="outline" onClick={() => handleEditLesson(lesson)}>
-                                Edit
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="border-red-300 text-red-600"
-                                onClick={() => handleDeleteLesson(lesson._id)}
-                              >
-                                Delete
-                              </Button>
+                              <Button size="sm" variant="outline" onClick={() => handleEditLesson(lesson)}>Edit</Button>
+                              <Button size="sm" variant="outline" onClick={() => handlePreviewLesson(lesson)}>Preview</Button>
+                              {!lesson.isPublished ? (
+                                <Button size="sm" variant="outline" className="border-green-600 text-green-700" onClick={() => togglePublishLesson(lesson._id, true)}>
+                                  Publish
+                                </Button>
+                              ) : (
+                                <Button size="sm" variant="outline" className="border-yellow-600 text-yellow-700" onClick={() => togglePublishLesson(lesson._id, false)}>
+                                  Unpublish
+                                </Button>
+                              )}
+                              <Button size="sm" variant="outline" className="border-red-300 text-red-600" onClick={() => handleDeleteLesson(lesson._id)}>Delete</Button>
                             </div>
                           </div>
                         </div>
@@ -1751,6 +2143,431 @@ export function CourseManage({ courseId }: CourseManageProps) {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Quiz Edit Modal */}
+        <Dialog open={quizModalOpen} onOpenChange={setQuizModalOpen}>
+          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+            <DialogHeader>
+              <DialogTitle>{editingQuiz ? `Edit Quiz: ${editingQuiz.title}` : 'Create New Quiz'}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="quiz-title">Quiz Title</Label>
+                <Input id="quiz-title" value={quizTitle} onChange={(e) => setQuizTitle(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="quiz-description">Description</Label>
+                <Textarea
+                  id="quiz-description"
+                  value={quizDescription}
+                  onChange={(e) => setQuizDescription(e.target.value)}
+                  rows={3}
+                />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="quiz-time-limit">Time Limit (minutes)</Label>
+                  <Input
+                    id="quiz-time-limit"
+                    type="number"
+                    min="0"
+                    value={quizTimeLimit}
+                    onChange={(e) => setQuizTimeLimit(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="quiz-total-marks">Total Marks</Label>
+                  <Input
+                    id="quiz-total-marks"
+                    type="number"
+                    min="0"
+                    value={quizTotalMarks}
+                    onChange={(e) => setQuizTotalMarks(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="quiz-attempts">Max Attempts</Label>
+                  <Input
+                    id="quiz-attempts"
+                    type="number"
+                    min="1"
+                    value={quizAttempts}
+                    onChange={(e) => setQuizAttempts(e.target.value)}
+                  />
+                </div>
+              </div>
+
+                  <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-base font-medium">Questions</Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleAddQuestion}
+                    className="border-[#1E3A8A] text-[#1E3A8A]"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Question
+                  </Button>
+                </div>
+
+                {quizQuestions.map((question, index) => (
+                  <div key={question.id} className="rounded-md border p-4 space-y-3">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-gray-900">Q{index + 1}</span>
+                          <Select
+                            value={question.type}
+                            onValueChange={(type: QuizQuestionType) => handleQuestionTypeChange(question.id, type)}
+                          >
+                            <SelectTrigger className="w-48">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="multiple-choice">Multiple Choice</SelectItem>
+                              <SelectItem value="fill-in-the-blank">Fill in the Blank</SelectItem>
+                              <SelectItem value="short-answer">Short Answer</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <Input
+                            type="number"
+                            min="1"
+                            placeholder="Points"
+                            value={question.points}
+                            onChange={(e) => handleQuestionChange(question.id, 'points', parseInt(e.target.value) || 1)}
+                            className="w-20"
+                          />
+                        </div>
+                        <Textarea
+                          placeholder="Question text"
+                          value={question.questionText}
+                          onChange={(e) => handleQuestionChange(question.id, 'questionText', e.target.value)}
+                          rows={2}
+                        />
+                        {question.type === 'multiple-choice' && (
+                          <div className="space-y-2">
+                            <Label className="text-sm">Options</Label>
+                            {question.options.map((option, optIndex) => (
+                              <div key={`${question.id}-option-${optIndex}`} className="flex items-center gap-2">
+                                <span className="text-sm font-medium w-6">{String.fromCharCode(65 + optIndex)}.</span>
+                                <Input
+                                  placeholder={`Option ${optIndex + 1}`}
+                                  value={option}
+                                  onChange={(e) => handleOptionChange(question.id, optIndex, e.target.value)}
+                                  className="flex-1"
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <div className="space-y-1">
+                          <Label className="text-sm">Correct Answer</Label>
+                          {question.type === 'multiple-choice' ? (
+                            <Select
+                              value={question.correctAnswer}
+                              onValueChange={(answer) => handleQuestionChange(question.id, 'correctAnswer', answer)}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select correct option" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {question.options.map((option, optIndex) => (
+                                  <li key={`${question.id}-correct-${optIndex}`} value={option}>
+                                    {String.fromCharCode(65 + optIndex)}. {option || `(Option ${optIndex + 1})`}
+                                  </li>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <Input
+                              placeholder="Correct answer"
+                              value={question.correctAnswer}
+                              onChange={(e) => handleQuestionChange(question.id, 'correctAnswer', e.target.value)}
+                            />
+                          )}
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleRemoveQuestion(question.id)}
+                        className="border-red-300 text-red-600 ml-2"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <Button onClick={() => saveQuiz(false)} disabled={quizSaving}>Save Draft</Button>
+                <Button onClick={() => saveQuiz(true)} disabled={quizSaving} className="bg-[#F59E0B]">Save & Publish</Button>
+                <Button variant="outline" onClick={() => setQuizModalOpen(false)}>Cancel</Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Assignment Edit Modal */}
+        <Dialog open={editAssignmentOpen} onOpenChange={setEditAssignmentOpen}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>{editingAssignment ? `Edit Assignment: ${editingAssignment.title}` : 'Create New Assignment'}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="assignment-title">Title</Label>
+                <Input
+                  id="assignment-title"
+                  value={assignmentTitle}
+                  onChange={(e) => setAssignmentTitle(e.target.value)}
+                  placeholder="Assignment title"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="assignment-description">Description</Label>
+                <Textarea
+                  id="assignment-description"
+                  value={assignmentDescription}
+                  onChange={(e) => setAssignmentDescription(e.target.value)}
+                  rows={4}
+                  placeholder="Assignment instructions and requirements"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <FileOrUrlInput
+                  label="Assignment Files (Optional)"
+                  accept=".pdf,.doc,.docx,.txt,.ppt,.pptx"
+                  multiple={true}
+                  maxSizeMB={20}
+                  onFilesChange={setAssignmentFiles}
+                  onUrlChange={setAssignmentUrl}
+                  allowUrl={true}
+                  allowFiles={true}
+                />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="assignment-due-date">Due Date</Label>
+                  <Input
+                    id="assignment-due-date"
+                    type="datetime-local"
+                    value={assignmentDueDate}
+                    onChange={(e) => setAssignmentDueDate(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="assignment-max-points">Max Points</Label>
+                  <Input
+                    id="assignment-max-points"
+                    type="number"
+                    min="1"
+                    value={assignmentMaxPoints}
+                    onChange={(e) => setAssignmentMaxPoints(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  id="allow-late"
+                  checked={assignmentAllowLate}
+                  onChange={(e) => setAssignmentAllowLate(e.target.checked)}
+                />
+                <Label htmlFor="allow-late">Allow late submissions</Label>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <Button onClick={handleSaveAssignment} disabled={assignmentCreating}>
+                  {editingAssignment ? 'Update Assignment' : 'Create Assignment'}
+                </Button>
+                <Button variant="outline" onClick={() => { setEditAssignmentOpen(false); resetAssignmentForm(); }}>Cancel</Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Assignment Preview Modal */}
+        <Dialog open={previewAssignmentOpen} onOpenChange={setPreviewAssignmentOpen}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>{previewAssignment?.title}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <p className="text-sm text-gray-600">Due: {previewAssignment?.dueDate ? new Date(previewAssignment.dueDate).toLocaleString() : 'Not set'}</p>
+              <p className="text-sm text-gray-600">Max Points: {previewAssignment?.maxPoints}</p>
+              <p className="text-gray-700 whitespace-pre-wrap">{previewAssignment?.description}</p>
+              <p className="text-sm text-gray-600">Allow Late: {previewAssignment?.allowLateSubmission ? 'Yes' : 'No'}</p>
+              <p className="text-sm text-gray-600">Status: {previewAssignment?.isPublished ? 'Published' : 'Draft'}</p>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setPreviewAssignmentOpen(false)}>Close</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Lesson Preview Modal */}
+        <Dialog open={lessonPreviewOpen} onOpenChange={setLessonPreviewOpen}>
+          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+            <DialogHeader>
+              <DialogTitle>Lesson Preview: {previewLesson?.title}</DialogTitle>
+            </DialogHeader>
+            {previewLesson && (
+              <div className="space-y-4">
+                {previewLesson.sectionTitle && (
+                  <p className="text-sm text-gray-600">Section: {previewLesson.sectionTitle}</p>
+                )}
+                {previewLesson.description && (
+                  <p className="text-gray-700 whitespace-pre-wrap">{previewLesson.description}</p>
+                )}
+                {previewLesson.type === 'video' && previewLesson.content && (
+                  <div className="aspect-video w-full">
+                    <iframe
+                      src={previewLesson.content}
+                      title={previewLesson.title}
+                      className="h-full w-full"
+                      allowFullScreen
+                    />
+                  </div>
+                )}
+                {previewLesson.type === 'text' && previewLesson.content && (
+                  <div className="prose max-w-none">
+                    <p className="whitespace-pre-wrap">{previewLesson.content}</p>
+                  </div>
+                )}
+                {(previewLesson.type === 'pdf' || previewLesson.type === 'ppt') && previewLesson.fileUrl && (
+                  <a
+                    href={previewLesson.fileUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-block rounded-md bg-[#1E3A8A] px-4 py-2 text-white hover:bg-[#1E3A8A]/90"
+                  >
+                    Open {previewLesson.type.toUpperCase()} file
+                  </a>
+                )}
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setLessonPreviewOpen(false)}>Close</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Grading Modal */}
+        {gradingAssignmentId && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+              <div className="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center">
+                <h2 className="text-xl font-bold text-gray-900">Grade Submissions</h2>
+                <button
+                  onClick={() => setGradingAssignmentId(null)}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="p-6 space-y-6">
+                {submissionsLoading ? (
+                  <p className="text-center text-gray-600">Loading submissions...</p>
+                ) : submissionsList.length === 0 ? (
+                  <p className="text-center text-gray-600">No submissions yet for this assignment.</p>
+                ) : (
+                  submissionsList.map((sub) => (
+                    <div key={sub._id} className="border rounded-lg p-4 space-y-3">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <p className="font-semibold text-gray-900">Student: {sub.studentName || sub.studentId}</p>
+                          <p className="text-sm text-gray-600">Submitted: {new Date(sub.submittedAt).toLocaleString()}</p>
+                          {sub.isLate && <p className="text-xs text-red-600">Late submission</p>}
+                        </div>
+                        <Badge className={sub.status === 'Graded' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}>
+                          {sub.status || 'Submitted'}
+                        </Badge>
+                      </div>
+                      {sub.content && (
+                        <div>
+                          <p className="text-sm font-medium text-gray-700">Content:</p>
+                          <p className="text-sm text-gray-600 whitespace-pre-wrap">{sub.content}</p>
+                        </div>
+                      )}
+                      {sub.attachments?.length > 0 && (
+                        <div>
+                          <p className="text-sm font-medium text-gray-700">Attachments:</p>
+                          <ul className="list-disc list-inside text-sm text-blue-600">
+                            {sub.attachments.map((url: string, idx: number) => (
+                              <li key={idx}>
+                                <a href={url} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                                  Attachment {idx + 1}
+                                </a>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Points</label>
+                          <input
+                            type="number"
+                            min="0"
+                            max={sub.maxPoints || 100}
+                            value={gradingData[sub._id]?.points || ''}
+                            onChange={(e) =>
+                              setGradingData(prev => ({
+                                ...prev,
+                                [sub._id]: { ...prev[sub._id], points: e.target.value },
+                              }))
+                            }
+                            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                            placeholder={`Max: ${sub.maxPoints || 100}`}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Feedback (optional)</label>
+                          <textarea
+                            value={gradingData[sub._id]?.feedback || ''}
+                            onChange={(e) =>
+                              setGradingData(prev => ({
+                                ...prev,
+                                [sub._id]: { ...prev[sub._id], feedback: e.target.value },
+                              }))
+                            }
+                            rows={2}
+                            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                            placeholder="Write feedback here..."
+                          />
+                        </div>
+                      </div>
+                      <div className="flex justify-end">
+                        <button
+                          onClick={() => handleGradeSubmission(sub._id)}
+                          disabled={submittingGrade[sub._id]}
+                          className="bg-[#1E3A8A] hover:bg-[#1E3A8A]/90 text-white px-4 py-2 rounded-md text-sm disabled:opacity-50"
+                        >
+                          {submittingGrade[sub._id] ? 'Saving...' : 'Save Grade'}
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        <ConfirmDialog
+          open={confirmDialog.open}
+          onOpenChange={(open) => setConfirmDialog((prev) => ({ ...prev, open }))}
+          onConfirm={() => {
+            confirmDialog.onConfirm();
+            setConfirmDialog((prev) => ({ ...prev, open: false }));
+          }}
+          title={confirmDialog.title}
+          description={confirmDialog.description}
+        />
       </div>
     </div>
   );

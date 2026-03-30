@@ -10,6 +10,7 @@ export const ALLOWED_LESSON_EXTENSIONS = [
   '.avi',
   '.mov',
   '.webm',
+  '.txt',
 ] as const;
 export const DEFAULT_LESSON_MAX_UPLOAD_MB = 500;
 

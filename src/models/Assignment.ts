@@ -10,6 +10,7 @@ const assignmentSchema = new mongoose.Schema(
     maxPoints: { type: Number, default: 100 },
     instructions: { type: String, default: '' },
     attachments: [{ type: String }], // URLs to attached files
+    url: { type: String, default: '' }, // Optional URL for assignment resources
     isPublished: { type: Boolean, default: false },
     allowLateSubmission: { type: Boolean, default: true },
     latePenalty: { type: Number, default: 0 }, // percentage

@@ -1,14 +1,15 @@
 "use client";
 
-import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card';
-import { Button } from '@/app/components/ui/button';
+import { useAuth } from '@/app/components/AuthContext';
+import { ConfirmDialog } from '@/app/components/confirm-dialog';
 import { Badge } from '@/app/components/ui/badge';
+import { Button } from '@/app/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
-import { Users, BookOpen, TrendingUp, UserCheck, Eye, CheckCircle } from 'lucide-react';
+import { BookOpen, CheckCircle, Eye, TrendingUp, UserCheck, Users } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { useAuth } from '@/app/components/AuthContext';
 import { toast } from 'sonner';
 
 export function AdminDashboard() {
@@ -29,6 +30,16 @@ export function AdminDashboard() {
   const [deletingDiscussionId, setDeletingDiscussionId] = useState<string | null>(null);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newCategoryIcon, setNewCategoryIcon] = useState('📚');
+
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    onConfirm: () => void;
+    title?: string;
+    description?: string;
+  }>({
+    open: false,
+    onConfirm: () => {},
+  });
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -115,9 +126,7 @@ export function AdminDashboard() {
   };
 
   const handleDeleteCourse = async (courseId: string) => {
-    const confirmed = window.confirm('Delete this course and all related data? This action cannot be undone.');
-    if (!confirmed) return;
-
+    // No window.confirm here – it's already confirmed by the dialog
     const previousCourses = courses;
     setCourses((prev) => prev.filter((item) => item.id !== courseId));
     setDeletingCourseId(courseId);
@@ -447,7 +456,14 @@ export function AdminDashboard() {
                               size="sm"
                               className="border-red-300 text-red-600"
                               disabled={deletingCourseId === course.id}
-                              onClick={() => handleDeleteCourse(course.id)}
+                              onClick={() => {
+                                setConfirmDialog({
+                                  open: true,
+                                  title: "Delete Course",
+                                  description: `Delete "${course.title}" and all related data? This action cannot be undone.`,
+                                  onConfirm: () => handleDeleteCourse(course.id),
+                                });
+                              }}
                             >
                               {deletingCourseId === course.id ? 'Deleting...' : 'Delete'}
                             </Button>
@@ -586,6 +602,16 @@ export function AdminDashboard() {
             </Card>
           </TabsContent>
         </Tabs>
+        <ConfirmDialog
+          open={confirmDialog.open}
+          onOpenChange={(open) => setConfirmDialog((prev) => ({ ...prev, open }))}
+          onConfirm={() => {
+            confirmDialog.onConfirm();
+            setConfirmDialog((prev) => ({ ...prev, open: false }));
+          }}
+          title={confirmDialog.title}
+          description={confirmDialog.description}
+        />
       </div>
     </div>
   );
