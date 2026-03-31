@@ -16,6 +16,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import { uploadFileToCloudinary } from '@/lib/cloudinaryClient';
 
 interface CourseDetailsProps {
   id: string;
@@ -142,16 +143,30 @@ export function CourseDetails({ id }: CourseDetailsProps) {
 
     setSubmitting(prev => ({ ...prev, [assignmentId]: true }));
     try {
-      const formData = new FormData();
-      formData.append('assignmentId', assignmentId);
-      formData.append('courseId', courseId);
-      if (draft.content) formData.append('content', draft.content);
-      if (draft.url) formData.append('url', draft.url);
-      for (const file of draft.files) {
-        formData.append('attachments', file);
+      const uploadedAttachments = draft.files.length
+        ? await Promise.all(
+            draft.files.map((file) =>
+              uploadFileToCloudinary(file, { folder: 'submissions', resourceType: 'raw' })
+            )
+          )
+        : [];
+
+      const payload: Record<string, unknown> = {
+        assignmentId,
+        courseId,
+        content: draft.content,
+        url: draft.url,
+      };
+
+      if (uploadedAttachments.length > 0) {
+        payload.attachments = uploadedAttachments.map((item) => item.url);
       }
 
-      const res = await fetch('/api/student/submissions', { method: 'POST', body: formData });
+      const res = await fetch('/api/student/submissions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
 

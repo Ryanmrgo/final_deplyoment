@@ -21,6 +21,7 @@ import type { ChangeEvent } from 'react';
 import { useAuth } from '@/app/components/AuthContext';
 import { toast } from 'sonner';
 import { DEFAULT_LESSON_MAX_UPLOAD_MB } from '@/lib/lesson';
+import { uploadFileToCloudinary } from '@/lib/cloudinaryClient';
 
 const DEFAULT_CATEGORIES = [
   'General',
@@ -92,6 +93,8 @@ export function TeacherDashboard() {
     if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
   };
+
+  const getFileType = (fileName: string) => fileName.split('.').pop()?.toLowerCase() || 'file';
 
   const handlePublishToggle = async (course: any) => {
     const courseId = course._id || course.id;
@@ -343,23 +346,30 @@ export function TeacherDashboard() {
     setCreating(true);
     setCreateError(null);
     try {
-      const formData = new FormData();
-      formData.append('title', createTitle.trim());
-      formData.append('description', createDesc.trim());
-      formData.append('category', createCategory.trim() || 'General');
-      formData.append('level', createLevel);
-      formData.append('duration', createDuration ? String(Number(createDuration)) : '0');
-      formData.append('price', '0');
-      formData.append('language', createLanguage.trim() || 'English');
-      formData.append('requirements', createRequirements.trim());
-      formData.append('outcomes', createOutcomes.trim());
+      const payload: Record<string, unknown> = {
+        title: createTitle.trim(),
+        description: createDesc.trim(),
+        category: createCategory.trim() || 'General',
+        level: createLevel,
+        duration: createDuration ? String(Number(createDuration)) : '0',
+        price: '0',
+        language: createLanguage.trim() || 'English',
+        requirements: createRequirements.trim(),
+        outcomes: createOutcomes.trim(),
+      };
+
       if (createThumbnailFile) {
-        formData.append('thumbnail', createThumbnailFile);
+        const uploaded = await uploadFileToCloudinary(createThumbnailFile, {
+          folder: 'course-thumbnails',
+          resourceType: 'image',
+        });
+        payload.image = uploaded.url;
       }
 
       const res = await fetch('/api/teacher/courses', {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
       });
       let data: any = null;
       let rawText = '';
@@ -380,31 +390,59 @@ export function TeacherDashboard() {
         if (createdCourseId && lessonsToCreate.length) {
           for (let i = 0; i < lessonsToCreate.length; i += 1) {
             const lesson = lessonsToCreate[i];
-            const lessonData = new FormData();
-            lessonData.append('courseId', createdCourseId);
-            lessonData.append('title', lesson.title.trim());
-            lessonData.append('description', lesson.description.trim());
-            lessonData.append('lessonOrder', String(i));
+            const lessonPayload: Record<string, unknown> = {
+              courseId: createdCourseId,
+              title: lesson.title.trim(),
+              description: lesson.description.trim(),
+              lessonOrder: String(i),
+              contentType: lesson.type === 'document' ? 'document' : lesson.type,
+            };
+            const lessonFiles: Array<{ fileName: string; fileUrl: string; fileType: string }> = [];
 
             if (lesson.type === 'youtube') {
-              lessonData.append('videoType', 'youtube');
-              lessonData.append('youtubeUrl', lesson.youtubeUrl.trim());
+              lessonPayload.videoType = 'youtube';
+              lessonPayload.youtubeUrl = lesson.youtubeUrl.trim();
             } else if (lesson.file) {
               if (lesson.type === 'video') {
-                lessonData.append('videoType', 'upload');
-                lessonData.append('videoFile', lesson.file);
+                const uploaded = await uploadFileToCloudinary(lesson.file, {
+                  folder: 'course-lessons',
+                  resourceType: 'video',
+                });
+                lessonPayload.videoType = 'upload';
+                lessonPayload.videoUrl = uploaded.url;
               } else {
-                lessonData.append('lessonFiles', lesson.file);
+                const uploaded = await uploadFileToCloudinary(lesson.file, {
+                  folder: 'course-lessons',
+                  resourceType: 'raw',
+                });
+                lessonFiles.push({
+                  fileName: uploaded.name,
+                  fileUrl: uploaded.url,
+                  fileType: getFileType(uploaded.name || lesson.file.name),
+                });
               }
             }
 
             if ((lesson.type === 'video' || lesson.type === 'youtube') && lesson.supportingFile) {
-              lessonData.append('lessonFiles', lesson.supportingFile);
+              const uploadedSupport = await uploadFileToCloudinary(lesson.supportingFile, {
+                folder: 'course-lessons',
+                resourceType: 'raw',
+              });
+              lessonFiles.push({
+                fileName: uploadedSupport.name,
+                fileUrl: uploadedSupport.url,
+                fileType: getFileType(uploadedSupport.name || lesson.supportingFile.name),
+              });
+            }
+
+            if (lessonFiles.length > 0) {
+              lessonPayload.lessonFiles = lessonFiles;
             }
 
             const lessonRes = await fetch('/api/lessons', {
               method: 'POST',
-              body: lessonData,
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(lessonPayload),
             });
 
             if (!lessonRes.ok) {

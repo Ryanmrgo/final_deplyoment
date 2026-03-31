@@ -65,6 +65,7 @@ export async function POST(req: Request) {
   let courseId: string | null = null;
   let content = '';
   const attachmentFiles: File[] = [];
+  let attachmentUrls: string[] = [];
 
   if (contentType.includes('multipart/form-data')) {
     const formData = await req.formData();
@@ -82,7 +83,11 @@ export async function POST(req: Request) {
     assignmentId = body.assignmentId;
     courseId = body.courseId;
     content = body.content || '';
-    // attachments from JSON would be URLs, not files – skip file upload
+    if (Array.isArray(body.attachments)) {
+      attachmentUrls = body.attachments
+        .map((item: unknown) => String(item || '').trim())
+        .filter(Boolean);
+    }
   }
 
   if (!assignmentId || !courseId) {
@@ -122,10 +127,11 @@ export async function POST(req: Request) {
     }
 
     // Upload attachment files
-    const attachmentUrls: string[] = [];
-    for (const file of attachmentFiles) {
-      const uploaded = await uploadFile(file);
-      attachmentUrls.push(uploaded.url);
+    if (attachmentFiles.length > 0) {
+      for (const file of attachmentFiles) {
+        const uploaded = await uploadFile(file);
+        attachmentUrls.push(uploaded.url);
+      }
     }
 
     // Create submission

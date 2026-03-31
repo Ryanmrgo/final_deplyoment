@@ -166,14 +166,43 @@ export async function POST(req: Request) {
         : null;
     const youtubeUrlInput = typeof body.youtubeUrl === 'string' ? body.youtubeUrl.trim() : '';
     const fileUrlInput = typeof body.fileUrl === 'string' ? body.fileUrl.trim() : '';
+    const videoUrlInput = typeof body.videoUrl === 'string' ? body.videoUrl.trim() : '';
     const lessonOrderInput = Number(body.lessonOrder);
+
+    const rawLessonFilesInput =
+      typeof body.lessonFiles === 'string'
+        ? (() => {
+            try {
+              return JSON.parse(body.lessonFiles);
+            } catch {
+              return [];
+            }
+          })()
+        : body.lessonFiles;
+
+    const lessonFilesInput = Array.isArray(rawLessonFilesInput)
+      ? rawLessonFilesInput
+          .filter((item: any) => item && typeof item.fileUrl === 'string' && item.fileUrl.trim())
+          .map((item: any) => {
+            const fileName = String(item.fileName || '').trim();
+            const fileUrl = String(item.fileUrl || '').trim();
+            const fileType = String(item.fileType || '').trim().toLowerCase();
+            const derivedName = fileName || fileUrl.split('/').pop() || 'file';
+            const derivedType = fileType || derivedName.split('.').pop() || 'file';
+            return {
+              fileName: derivedName,
+              fileUrl,
+              fileType: derivedType,
+            };
+          })
+      : [];
 
     if (!title) return NextResponse.json({ error: 'title is required' }, { status: 400 });
     let lessonVideo: { type: 'upload' | 'youtube'; url: string } | null = null;
-    let lessonFilesPayload: Array<{ fileName: string; fileUrl: string; fileType: string }> = [];
+    let lessonFilesPayload: Array<{ fileName: string; fileUrl: string; fileType: string }> = [...lessonFilesInput];
 
     // New combined payload (videoType + videoFile + lessonFiles)
-    if (videoTypeInput || lessonFiles.length > 0) {
+    if (videoTypeInput || lessonFiles.length > 0 || lessonFilesInput.length > 0 || videoUrlInput) {
       if (videoTypeInput === 'youtube') {
         const videoId = parseYoutubeVideoId(youtubeUrlInput);
         if (!videoId) {
@@ -181,20 +210,23 @@ export async function POST(req: Request) {
         }
         lessonVideo = { type: 'youtube', url: toYoutubeEmbedUrl(videoId) };
       } else if (videoTypeInput === 'upload') {
-        if (!videoFile) {
-          return NextResponse.json({ error: 'Video file is required for upload video type' }, { status: 400 });
+        if (videoFile) {
+          if (videoFile.size > MAX_LESSON_UPLOAD_BYTES) {
+            return NextResponse.json(
+              { error: `File size exceeds ${LESSON_MAX_UPLOAD_MB}MB limit` },
+              { status: 400 }
+            );
+          }
+          if (!isSupportedLessonFile(videoFile.name)) {
+            return NextResponse.json({ error: 'Unsupported video file format' }, { status: 400 });
+          }
+          const uploadedVideo = await uploadLessonFile(videoFile);
+          lessonVideo = { type: 'upload', url: uploadedVideo.url };
+        } else if (videoUrlInput) {
+          lessonVideo = { type: 'upload', url: videoUrlInput };
+        } else {
+          return NextResponse.json({ error: 'Video file or video URL is required for upload video type' }, { status: 400 });
         }
-        if (videoFile.size > MAX_LESSON_UPLOAD_BYTES) {
-          return NextResponse.json(
-            { error: `File size exceeds ${LESSON_MAX_UPLOAD_MB}MB limit` },
-            { status: 400 }
-          );
-        }
-        if (!isSupportedLessonFile(videoFile.name)) {
-          return NextResponse.json({ error: 'Unsupported video file format' }, { status: 400 });
-        }
-        const uploadedVideo = await uploadLessonFile(videoFile);
-        lessonVideo = { type: 'upload', url: uploadedVideo.url };
       }
 
       for (const lessonFile of lessonFiles) {

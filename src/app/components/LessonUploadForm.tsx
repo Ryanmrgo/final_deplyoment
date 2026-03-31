@@ -6,6 +6,7 @@ import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
 import { Textarea } from '@/app/components/ui/textarea';
 import { FileUploader } from '@/app/components/FileUploader';
+import { uploadFileToCloudinary } from '@/lib/cloudinaryClient';
 
 type LessonUploadFormProps = {
   courseId: string;
@@ -28,6 +29,8 @@ export function LessonUploadForm({ courseId, onCreated }: LessonUploadFormProps)
     return '.pdf,.ppt,.pptx,.doc,.docx';
   }, [contentType]);
 
+  const getFileType = (fileName: string) => fileName.split('.').pop()?.toLowerCase() || 'file';
+
   const submit = async () => {
     if (!title.trim()) {
       setMessage('Lesson title is required.');
@@ -47,30 +50,60 @@ export function LessonUploadForm({ courseId, onCreated }: LessonUploadFormProps)
     setIsSubmitting(true);
     setMessage('');
     try {
-      const formData = new FormData();
-      formData.append('courseId', courseId);
-      formData.append('title', title.trim());
-      formData.append('description', description.trim());
-      formData.append('lessonOrder', String(Number(lessonOrder) || 0));
+      const payload: Record<string, unknown> = {
+        courseId,
+        title: title.trim(),
+        description: description.trim(),
+        lessonOrder: String(Number(lessonOrder) || 0),
+        contentType,
+      };
+
+      const lessonFiles: Array<{ fileName: string; fileUrl: string; fileType: string }> = [];
 
       if (contentType === 'youtube') {
-        formData.append('videoType', 'youtube');
-        formData.append('youtubeUrl', youtubeUrl.trim());
+        payload.videoType = 'youtube';
+        payload.youtubeUrl = youtubeUrl.trim();
       } else if (file) {
         if (contentType === 'video') {
-          formData.append('videoType', 'upload');
-          formData.append('videoFile', file);
+          const uploaded = await uploadFileToCloudinary(file, {
+            folder: 'course-lessons',
+            resourceType: 'video',
+          });
+          payload.videoType = 'upload';
+          payload.videoUrl = uploaded.url;
         } else {
-          formData.append('lessonFiles', file);
+          const uploaded = await uploadFileToCloudinary(file, {
+            folder: 'course-lessons',
+            resourceType: 'raw',
+          });
+          lessonFiles.push({
+            fileName: uploaded.name,
+            fileUrl: uploaded.url,
+            fileType: getFileType(uploaded.name || file.name),
+          });
         }
       }
+
       if ((contentType === 'video' || contentType === 'youtube') && supportingFile) {
-        formData.append('lessonFiles', supportingFile);
+        const uploadedSupport = await uploadFileToCloudinary(supportingFile, {
+          folder: 'course-lessons',
+          resourceType: 'raw',
+        });
+        lessonFiles.push({
+          fileName: uploadedSupport.name,
+          fileUrl: uploadedSupport.url,
+          fileType: getFileType(uploadedSupport.name || supportingFile.name),
+        });
+      }
+
+      if (lessonFiles.length > 0) {
+        payload.lessonFiles = lessonFiles;
       }
 
       const res = await fetch('/api/lessons', {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) {

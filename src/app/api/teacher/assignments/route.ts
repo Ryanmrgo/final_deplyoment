@@ -74,8 +74,11 @@ export async function POST(req: Request) {
     await connectDB();
 
     // Handle file uploads
-    const uploadedFiles: string[] = [];
-    if (files.length > 0) {
+    const uploadedFiles: string[] = Array.isArray(body.attachments)
+      ? body.attachments.map((item: unknown) => String(item || '').trim()).filter(Boolean)
+      : [];
+
+    if (uploadedFiles.length === 0 && files.length > 0) {
       for (const file of files) {
         if (file.size > 20 * 1024 * 1024) { // 20MB limit
           return NextResponse.json({ error: 'File size exceeds 20MB limit' }, { status: 400 });

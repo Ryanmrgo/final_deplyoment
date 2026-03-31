@@ -30,6 +30,7 @@ import { useRouter } from 'next/navigation';
 import type { ChangeEvent } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { uploadFileToCloudinary } from '@/lib/cloudinaryClient';
 
 interface CourseManageProps {
   courseId: string;
@@ -355,25 +356,27 @@ export function CourseManage({ courseId }: CourseManageProps) {
     setAssignmentCreating(true);
     setAssignmentMessage(null);
     try {
-      const formData = new FormData();
-      formData.append('title', assignmentTitle.trim());
-      formData.append('description', assignmentDescription.trim());
-      formData.append('courseId', courseId);
-      formData.append('dueDate', assignmentDueDate || new Date().toISOString());
-      formData.append('maxPoints', String(parseInt(assignmentMaxPoints, 10) || 100));
-      formData.append('allowLateSubmission', String(assignmentAllowLate));
-      formData.append('instructions', assignmentDescription.trim());
+      const uploadedAttachments = assignmentFiles.length
+        ? await Promise.all(
+            assignmentFiles.map((file) =>
+              uploadFileToCloudinary(file, { folder: 'assignments', resourceType: 'raw' })
+            )
+          )
+        : [];
 
-      // Add files if any
-      if (assignmentFiles.length > 0) {
-        assignmentFiles.forEach((file, index) => {
-          formData.append('files', file);
-        });
-      }
+      const payload: Record<string, unknown> = {
+        title: assignmentTitle.trim(),
+        description: assignmentDescription.trim(),
+        courseId,
+        dueDate: assignmentDueDate || new Date().toISOString(),
+        maxPoints: String(parseInt(assignmentMaxPoints, 10) || 100),
+        allowLateSubmission: assignmentAllowLate,
+        instructions: assignmentDescription.trim(),
+        url: assignmentUrl.trim(),
+      };
 
-      // Add URL if provided
-      if (assignmentUrl.trim()) {
-        formData.append('url', assignmentUrl.trim());
+      if (uploadedAttachments.length > 0) {
+        payload.attachments = uploadedAttachments.map((item) => item.url);
       }
 
       let url = '/api/teacher/assignments';
@@ -383,7 +386,11 @@ export function CourseManage({ courseId }: CourseManageProps) {
         method = 'PATCH';
       }
 
-      const res = await fetch(url, { method, body: formData });
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to save assignment');
 
@@ -984,29 +991,63 @@ export function CourseManage({ courseId }: CourseManageProps) {
     setSaving(true);
     setSaveMessage(null);
     try {
-      const formData = new FormData();
-      formData.append('title', title.trim());
-      formData.append('description', description.trim());
-      formData.append('status', visibility);
-      formData.append('category', category.trim() || 'General');
-      formData.append('level', level);
-      formData.append('duration', duration ? String(Number(duration)) : '0');
-      formData.append('price', price ? String(Number(price)) : '0');
-      formData.append('language', language.trim() || 'English');
-      formData.append('requirements', requirements.trim());
-      formData.append('outcomes', outcomes.trim());
-      formData.append('syllabusMaterials', JSON.stringify(syllabusMaterials));
-      if (syllabusFile) formData.append('syllabus', syllabusFile);
-      pendingSyllabusItems.forEach((item, index) => {
-        if (!item.file) return;
-        formData.append('syllabusFiles', item.file);
-        formData.append('syllabusLabels', item.label.trim() || `Material ${index + 1}`);
-      });
-      if (thumbnailFile) formData.append('thumbnail', thumbnailFile);
+      const updatedMaterials: SyllabusMaterial[] = [...syllabusMaterials];
+
+      if (syllabusFile) {
+        const uploaded = await uploadFileToCloudinary(syllabusFile, {
+          folder: 'course-syllabi',
+          resourceType: 'raw',
+        });
+        updatedMaterials.push({
+          label: syllabusName.trim() || 'Syllabus',
+          url: uploaded.url,
+          name: uploaded.name,
+          type: uploaded.type || 'file',
+        });
+      }
+
+      if (pendingSyllabusItems.length > 0) {
+        for (const item of pendingSyllabusItems) {
+          if (!item.file) continue;
+          const uploaded = await uploadFileToCloudinary(item.file, {
+            folder: 'course-syllabi',
+            resourceType: 'raw',
+          });
+          updatedMaterials.push({
+            label: item.label.trim() || 'Material',
+            url: uploaded.url,
+            name: uploaded.name,
+            type: uploaded.type || 'file',
+          });
+        }
+      }
+
+      const payload: Record<string, unknown> = {
+        title: title.trim(),
+        description: description.trim(),
+        status: visibility,
+        category: category.trim() || 'General',
+        level,
+        duration: duration ? String(Number(duration)) : '0',
+        price: price ? String(Number(price)) : '0',
+        language: language.trim() || 'English',
+        requirements: requirements.trim(),
+        outcomes: outcomes.trim(),
+        syllabusMaterials: JSON.stringify(updatedMaterials),
+      };
+
+      if (thumbnailFile) {
+        const uploadedThumb = await uploadFileToCloudinary(thumbnailFile, {
+          folder: 'course-thumbnails',
+          resourceType: 'image',
+        });
+        payload.image = uploadedThumb.url;
+      }
 
       const res = await fetch(`/api/teacher/courses/${courseId}`, {
         method: 'PATCH',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (res.ok) {
