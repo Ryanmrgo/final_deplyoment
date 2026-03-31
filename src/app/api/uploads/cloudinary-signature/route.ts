@@ -43,7 +43,6 @@ export async function POST(req: Request) {
     {
       timestamp,
       folder: folder || undefined,
-      resource_type: resourceType,
     },
     apiSecret
   );
