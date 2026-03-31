@@ -103,25 +103,33 @@ export function Home() {
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
       {/* Hero Section */}
-      <section className="bg-gradient-to-r from-[#1E3A8A] to-[#2563EB] text-white py-20">
-        <div className="container mx-auto px-4">
+      <section className="relative overflow-hidden bg-gradient-to-r from-[#1E3A8A] via-[#1D4ED8] to-[#2563EB] text-white py-20">
+        <div className="pointer-events-none absolute inset-0">
+          <div className="absolute -top-24 -right-16 h-72 w-72 rounded-full bg-[#F59E0B]/30 blur-3xl" />
+          <div className="absolute bottom-[-120px] left-[-40px] h-80 w-80 rounded-full bg-white/10 blur-3xl" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.2),_transparent_60%)]" />
+        </div>
+        <div className="container mx-auto px-4 relative">
           <div className="max-w-3xl">
-            <h1 className="text-5xl font-bold mb-6">
-              Learn Without Limits, <br />
+            <span className="inline-flex items-center rounded-full bg-white/15 px-4 py-1 text-sm uppercase tracking-[0.2em]">
+              Learn anywhere
+            </span>
+            <h1 className="text-5xl md:text-6xl font-bold mb-6 mt-6">
+              Learn Without Limits,<br />
               Grow Without Barriers
             </h1>
-            <p className="text-xl mb-8 text-gray-100">
+            <p className="text-xl mb-8 text-white/90">
               Join AlinHub, a charity-based learning platform offering free, high-quality education for everyone.
               Learn new skills, advance your career, and achieve your goals.
             </p>
-            <div className="flex gap-4">
+            <div className="flex flex-wrap gap-4">
               <Link href="/courses">
                 <Button className="bg-[#F59E0B] hover:bg-[#F59E0B]/90 text-white text-lg px-8 py-6">
                   Explore Courses
                 </Button>
               </Link>
               <Link href="/auth/sign-up">
-                <Button variant="outline" className="bg-white text-[#1E3A8A] hover:bg-gray-100 text-lg px-8 py-6">
+                <Button variant="outline" className="border-white/60 bg-white/10 text-white hover:bg-white/20 text-lg px-8 py-6">
                   Get Started Free
                 </Button>
               </Link>
@@ -232,8 +240,9 @@ export function Home() {
       {/* CTA Section */}
       <section className="py-16">
         <div className="container mx-auto px-4">
-          <Card className="bg-gradient-to-r from-[#F59E0B] to-[#F97316] text-white">
-            <CardContent className="p-12 text-center">
+          <Card className="relative overflow-hidden bg-gradient-to-r from-[#F59E0B] to-[#F97316] text-white">
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_left,_rgba(255,255,255,0.35),_transparent_60%)]" />
+            <CardContent className="relative p-12 text-center">
               <h2 className="text-3xl font-bold mb-4">Ready to Start Learning?</h2>
               <p className="text-xl mb-8">Join thousands of learners on AlinHub today. It's completely free!</p>
               <Link href="/auth/sign-up">

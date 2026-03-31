@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { BookOpen, Mail, Heart } from 'lucide-react';
 
 export function Footer() {
@@ -20,10 +21,10 @@ export function Footer() {
           <div>
             <h4 className="font-semibold mb-4">Quick Links</h4>
             <ul className="space-y-2 text-gray-400 text-sm">
-              <li><a href="/" className="hover:text-[#F59E0B] transition">Home</a></li>
-              <li><a href="/courses" className="hover:text-[#F59E0B] transition">Browse Courses</a></li>
-              <li><a href="#" className="hover:text-[#F59E0B] transition">About Us</a></li>
-              <li><a href="#" className="hover:text-[#F59E0B] transition">Contact</a></li>
+              <li><Link href="/" className="hover:text-[#F59E0B] transition">Home</Link></li>
+              <li><Link href="/courses" className="hover:text-[#F59E0B] transition">Browse Courses</Link></li>
+              <li><Link href="/categories" className="hover:text-[#F59E0B] transition">Categories</Link></li>
+              <li><Link href="/dashboard" className="hover:text-[#F59E0B] transition">Dashboard</Link></li>
             </ul>
           </div>
 
@@ -31,10 +32,10 @@ export function Footer() {
           <div>
             <h4 className="font-semibold mb-4">Categories</h4>
             <ul className="space-y-2 text-gray-400 text-sm">
-              <li><a href="/courses?category=1" className="hover:text-[#F59E0B] transition">Web Development</a></li>
-              <li><a href="/courses?category=2" className="hover:text-[#F59E0B] transition">Data Science</a></li>
-              <li><a href="/courses?category=4" className="hover:text-[#F59E0B] transition">UI/UX Design</a></li>
-              <li><a href="/courses?category=5" className="hover:text-[#F59E0B] transition">Business</a></li>
+              <li><Link href="/courses?category=1" className="hover:text-[#F59E0B] transition">Web Development</Link></li>
+              <li><Link href="/courses?category=2" className="hover:text-[#F59E0B] transition">Data Science</Link></li>
+              <li><Link href="/courses?category=4" className="hover:text-[#F59E0B] transition">UI/UX Design</Link></li>
+              <li><Link href="/courses?category=5" className="hover:text-[#F59E0B] transition">Business</Link></li>
             </ul>
           </div>
 
