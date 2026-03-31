@@ -16,6 +16,7 @@ import {
 } from '@/app/components/ui/dialog';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
+import { FileUploader } from '@/app/components/FileUploader';
 import {
     Select,
     SelectContent,
@@ -157,6 +158,7 @@ export function CourseManage({ courseId }: CourseManageProps) {
   const [lessonType, setLessonType] = useState<'video' | 'pdf' | 'ppt' | 'text'>('text');
   const [lessonContent, setLessonContent] = useState('');
   const [lessonFileUrl, setLessonFileUrl] = useState('');
+  const [lessonUploadFile, setLessonUploadFile] = useState<File | null>(null);
   const [lessonDuration, setLessonDuration] = useState('0');
   const [lessonSaving, setLessonSaving] = useState(false);
   const [lessonMessage, setLessonMessage] = useState<string | null>(null);
@@ -714,6 +716,7 @@ export function CourseManage({ courseId }: CourseManageProps) {
     setLessonType('text');
     setLessonContent('');
     setLessonFileUrl('');
+    setLessonUploadFile(null);
     setLessonDuration('0');
     setEditingLessonId(null);
   };
@@ -727,13 +730,29 @@ export function CourseManage({ courseId }: CourseManageProps) {
     setLessonSaving(true);
     setLessonMessage(null);
 
+    let nextContent = lessonContent.trim();
+    let nextFileUrl = lessonFileUrl.trim();
+
+    if (lessonUploadFile) {
+      const resourceType = lessonType === 'video' ? 'video' : 'raw';
+      const uploaded = await uploadFileToCloudinary(lessonUploadFile, {
+        folder: 'course-lessons',
+        resourceType,
+      });
+      if (lessonType === 'video') {
+        nextContent = uploaded.url;
+      } else {
+        nextFileUrl = uploaded.url;
+      }
+    }
+
     const payload = {
       title: lessonTitle.trim(),
       sectionTitle: lessonSectionTitle.trim(),
       description: lessonDescription.trim(),
       type: lessonType,
-      content: lessonContent.trim(),
-      fileUrl: lessonFileUrl.trim(),
+      content: nextContent,
+      fileUrl: nextFileUrl,
       duration: Number(lessonDuration) || 0,
       isPublished: true,
     };
@@ -783,6 +802,7 @@ export function CourseManage({ courseId }: CourseManageProps) {
     setLessonType(lesson.type || 'text');
     setLessonContent(lesson.content || '');
     setLessonFileUrl(lesson.fileUrl || '');
+    setLessonUploadFile(null);
     setLessonDuration(String(lesson.duration || 0));
     setLessonMessage(null);
   };
@@ -1952,6 +1972,22 @@ export function CourseManage({ courseId }: CourseManageProps) {
                               ? 'Paste a public video URL (YouTube, Vimeo, etc.) and click Browse to preview it.'
                               : 'Paste a public PDF/PPT link and click Browse to verify the file opens.'}
                           </p>
+                          {lessonType !== 'text' ? (
+                            <div className="mt-3 space-y-2">
+                              <Label>Or upload a file</Label>
+                              <FileUploader
+                                accept={
+                                  lessonType === 'video'
+                                    ? '.mp4,.mkv,.avi,.mov,.webm'
+                                    : '.pdf,.ppt,.pptx,.doc,.docx'
+                                }
+                                onFileSelect={setLessonUploadFile}
+                              />
+                              <p className="text-xs text-gray-500">
+                                Uploading a file will replace the URL when you save.
+                              </p>
+                            </div>
+                          ) : null}
                         </div>
                       )}
                     </div>
