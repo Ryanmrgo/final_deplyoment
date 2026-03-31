@@ -1,7 +1,6 @@
 "use client";
 
 import { useAuth } from '@/app/components/AuthContext';
-import { ConfirmDialog } from '@/app/components/confirm-dialog';
 import { Avatar, AvatarFallback, AvatarImage } from '@/app/components/ui/avatar';
 import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card';
@@ -90,16 +89,6 @@ export function Profile() {
     );
   }
 
-  const [confirmDialog, setConfirmDialog] = useState<{
-    open: boolean;
-    onConfirm: () => void;
-    title?: string;
-    description?: string;
-  }>({
-    open: false,
-    onConfirm: () => { },
-  });
-
   const handleAvatarFile = (file: File | null) => {
     if (!file) {
       return;
@@ -116,7 +105,7 @@ export function Profile() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-
+    
     const updatedProfile: Partial<UserProfile> = {
       name,
       email,
@@ -127,12 +116,12 @@ export function Profile() {
       expertise,
       experienceYears,
     };
-
+    
     // Only add rating if it's a valid number
     if (rating && !isNaN(Number(rating))) {
       updatedProfile.rating = Number(rating);
     }
-
+    
     setIsEditing(false);
     setAvatarName('');
   };
@@ -166,10 +155,11 @@ export function Profile() {
                     />
                     <label
                       htmlFor="avatar-upload"
-                      className={`inline-flex items-center justify-center rounded-md border px-3 py-2 text-sm ${isEditing
-                        ? 'border-[#1E3A8A] text-[#1E3A8A] hover:bg-[#1E3A8A] hover:text-white'
-                        : 'border-gray-200 text-gray-400 cursor-not-allowed'
-                        }`}
+                      className={`inline-flex items-center justify-center rounded-md border px-3 py-2 text-sm ${
+                        isEditing
+                          ? 'border-[#1E3A8A] text-[#1E3A8A] hover:bg-[#1E3A8A] hover:text-white'
+                          : 'border-gray-200 text-gray-400 cursor-not-allowed'
+                      }`}
                     >
                       Browse
                     </label>
@@ -307,20 +297,11 @@ export function Profile() {
                     variant="outline"
                     className="border-[#1E3A8A] text-[#1E3A8A]"
                     onClick={() => {
-                      if (isDirty) {
-                        setConfirmDialog({
-                          open: true,
-                          title: 'Discard changes?',
-                          description: 'You have unsaved changes. Are you sure you want to cancel?',
-                          onConfirm: () => {
-                            resetForm();
-                            setIsEditing(false);
-                          },
-                        });
-                      } else {
-                        resetForm();
-                        setIsEditing(false);
+                      if (isDirty && !window.confirm('Discard your unsaved changes?')) {
+                        return;
                       }
+                      resetForm();
+                      setIsEditing(false);
                     }}
                   >
                     Cancel
@@ -335,16 +316,6 @@ export function Profile() {
             </form>
           </CardContent>
         </Card>
-        <ConfirmDialog
-          open={confirmDialog.open}
-          onOpenChange={(open) => setConfirmDialog((prev) => ({ ...prev, open }))}
-          onConfirm={() => {
-            confirmDialog.onConfirm();
-            setConfirmDialog((prev) => ({ ...prev, open: false }));
-          }}
-          title={confirmDialog.title}
-          description={confirmDialog.description}
-        />
       </div>
     </div>
   );
