@@ -17,6 +17,7 @@ const isAdminRoute = createRouteMatcher(['/dashboard/admin(.*)']);
 const isEnrollmentRoute = createRouteMatcher(['/api/enrollment(.*)']);
 const isTeacherApiRoute = createRouteMatcher(['/api/teacher(.*)']);
 const isStudentApiRoute = createRouteMatcher(['/api/student(.*)']);
+const isAdminApiRoute = createRouteMatcher(['/api/admin(.*)']);
 const isWebhookRoute = createRouteMatcher(['/api/webhooks/(.*)']);
 
 export default clerkMiddleware(async (auth, req) => {
@@ -24,7 +25,13 @@ export default clerkMiddleware(async (auth, req) => {
     return NextResponse.next();
   }
 
-  if (isDashboardRoute(req) || isEnrollmentRoute(req) || isTeacherApiRoute(req) || isStudentApiRoute(req)) {
+  if (
+    isDashboardRoute(req) ||
+    isEnrollmentRoute(req) ||
+    isTeacherApiRoute(req) ||
+    isStudentApiRoute(req) ||
+    isAdminApiRoute(req)
+  ) {
     const { userId } = await auth();
 
     if (!userId) {
@@ -80,6 +87,10 @@ export default clerkMiddleware(async (auth, req) => {
 
     if (isStudentApiRoute(req) && role !== 'student') {
       return NextResponse.json({ error: 'Student role required' }, { status: 403 });
+    }
+
+    if (isAdminApiRoute(req) && role !== 'admin') {
+      return NextResponse.json({ error: 'Admin role required' }, { status: 403 });
     }
   }
 

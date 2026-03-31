@@ -17,10 +17,14 @@ async function connectDB() {
       bufferCommands: false,
     };
 
+    if (!process.env.MONGODB_URI) {
+      throw new Error('MONGODB_URI is not set. Add it to your environment variables.');
+    }
+
     console.log('[MongoDB] Connecting to database...');
     
     cached.promise = mongoose
-      .connect(process.env.MONGODB_URI!, opts)
+      .connect(process.env.MONGODB_URI, opts)
       .then((mongoose) => {
         const dbName = mongoose.connection.db?.databaseName || '(unknown-db)';
         console.log('[MongoDB] Connected successfully to:', dbName);

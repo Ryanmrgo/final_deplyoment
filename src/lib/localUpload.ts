@@ -7,6 +7,10 @@ const UPLOAD_ROOT = path.join(process.cwd(), 'public', 'uploads', 'lessons');
 const sanitizeBaseName = (value: string) => value.replace(/[^a-zA-Z0-9-_]/g, '').slice(0, 40) || 'file';
 
 export async function saveFileLocally(file: File) {
+  if (process.env.VERCEL) {
+    throw new Error('Local uploads are disabled in serverless environments. Configure Cloudinary.');
+  }
+
   await fs.mkdir(UPLOAD_ROOT, { recursive: true });
 
   const ext = `.${file.name.split('.').pop() || ''}`.toLowerCase();
