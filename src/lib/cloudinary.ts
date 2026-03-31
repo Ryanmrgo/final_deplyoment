@@ -26,7 +26,7 @@ export async function uploadToCloudinary(
   file: File,
   options: {
     folder: string;
-    resourceType: 'image' | 'raw';
+    resourceType: 'image' | 'raw' | 'video';
   }
 ) {
   const uploader = ensureCloudinaryConfig();
