@@ -5,6 +5,7 @@ import connectDB from '@/config/db';
 import Course from '@/models/Course';
 import Discussion from '@/models/Discussion';
 import Enrollment from '@/models/Enrollment';
+import { createNotification } from '@/lib/notifications';
 
 const ensureCourseAccess = async (courseId: string, userId: string) => {
   if (!mongoose.Types.ObjectId.isValid(courseId)) {
@@ -93,6 +94,30 @@ export async function POST(
       createdAt: new Date(),
       updatedAt: new Date(),
     });
+
+    try {
+      const instructorId = String((access.course as any)?.instructor || '');
+      if (instructorId) {
+        await createNotification({
+          recipientId: instructorId,
+          recipientRole: 'teacher',
+          type: 'discussion.reply',
+          title: 'New student question',
+          message: `A student asked a new question in "${String((access.course as any)?.title || 'your course')}".`,
+          entityType: 'discussion',
+          entityId: String(discussion._id),
+          actionUrl: `/courses/${id}#teacher-discussions`,
+          priority: 'medium',
+          metadata: {
+            courseId: id,
+            discussionId: String(discussion._id),
+            studentId: userId,
+          },
+        });
+      }
+    } catch (notificationError) {
+      console.error('Discussion notification error:', notificationError);
+    }
 
     return NextResponse.json({ success: true, discussion }, { status: 201 });
   } catch (error) {

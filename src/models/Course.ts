@@ -33,6 +33,8 @@ export interface Course {
   requirements: string;
   outcomes: string;
   price: number;
+  /** Max active student enrollments (admin approval flow). Default 20 when unset. */
+  maxEnrollments: number;
   startDate: Date;
   endDate: Date | null;
   status: CourseStatus;
@@ -74,6 +76,7 @@ const courseSchema = new Schema<Course, CourseModel>(
     requirements: { type: String, default: '' },
     outcomes: { type: String, default: '' },
     price: { type: Number, default: 0 },
+    maxEnrollments: { type: Number, default: 20, min: 1 },
     startDate: { type: Date, default: Date.now },
     endDate: { type: Date, default: null },
     status: { type: String, enum: ['Draft', 'Published', 'Archived'], default: 'Draft' },

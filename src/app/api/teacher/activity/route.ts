@@ -4,11 +4,15 @@ import Course from '@/models/Course';
 import Enrollment from '@/models/Enrollment';
 import User from '@/models/User';
 import Discussion from '@/models/Discussion';
+import Submission from '@/models/Submission';
+import QuizAttempt from '@/models/QuizAttempt';
+import Assignment from '@/models/Assignment';
+import Quiz from '@/models/Quiz';
 import { getEffectiveRole } from '@/lib/auth';
 
 type ActivityItem = {
   id: string;
-  type: 'enrolled' | 'completed' | 'review' | 'discussion';
+  type: 'enrolled' | 'completed' | 'review' | 'discussion' | 'assignment_submission' | 'quiz_submission';
   studentName: string;
   initials: string;
   courseTitle: string;
@@ -16,6 +20,8 @@ type ActivityItem = {
   message: string;
   time: Date;
   studentId?: string;
+  actionUrl?: string;
+  actionLabel?: string;
 };
 
 export async function GET() {
@@ -72,8 +78,42 @@ export async function GET() {
 
     const discussionStudentIds = discussions.map((d: any) => d.studentId);
 
+    // Assignment submissions on teacher's courses
+    const submissions = await Submission.find({ courseId: { $in: courseIds } })
+      .sort({ submittedAt: -1 })
+      .limit(30)
+      .lean();
+    const submissionStudentIds = submissions.map((s: any) => s.studentId);
+    const assignmentIds = Array.from(
+      new Set(submissions.map((s: any) => String(s.assignmentId || '')).filter(Boolean))
+    );
+    const assignments = assignmentIds.length
+      ? await Assignment.find({ _id: { $in: assignmentIds } }).select('_id title').lean()
+      : [];
+    const assignmentMap = Object.fromEntries(
+      assignments.map((a: any) => [String(a._id), String(a.title || 'Assignment')])
+    );
+
+    // Quiz submissions on teacher's courses
+    const quizAttempts = await QuizAttempt.find({ courseId: { $in: courseIds } })
+      .sort({ submittedAt: -1 })
+      .limit(30)
+      .lean();
+    const quizAttemptStudentIds = quizAttempts.map((a: any) => a.studentId);
+    const quizIds = Array.from(new Set(quizAttempts.map((a: any) => String(a.quizId || '')).filter(Boolean)));
+    const quizzes = quizIds.length
+      ? await Quiz.find({ _id: { $in: quizIds } }).select('_id title').lean()
+      : [];
+    const quizMap = Object.fromEntries(quizzes.map((q: any) => [String(q._id), String(q.title || 'Quiz')]));
+
     const allStudentIds = Array.from(
-      new Set([...enrollmentStudentIds, ...reviewEvents.map((r) => (r as any).studentId).filter(Boolean), ...discussionStudentIds])
+      new Set([
+        ...enrollmentStudentIds,
+        ...reviewEvents.map((r) => (r as any).studentId).filter(Boolean),
+        ...discussionStudentIds,
+        ...submissionStudentIds,
+        ...quizAttemptStudentIds,
+      ])
     );
 
     const users = await User.find({ _id: { $in: allStudentIds } }).lean();
@@ -147,10 +187,70 @@ export async function GET() {
         courseId: rawCourseId || '',
         message,
         time: d.createdAt || d.updatedAt || new Date(),
+        actionUrl: rawCourseId ? `/courses/${rawCourseId}#teacher-discussions` : undefined,
+        actionLabel: 'Reply',
       };
     });
 
-    const allEvents = [...enrollmentEvents, ...hydratedReviews, ...discussionEvents].sort(
+    const submissionEvents: ActivityItem[] = submissions.map((s: any) => {
+      const rawCourseId = s.courseId?.toString();
+      const course = courseMap[rawCourseId] || s.courseId;
+      const courseTitle = course?.title || 'Course';
+      const studentName = userMap[s.studentId?.toString()] || 'Student';
+      const initials = studentName
+        .split(' ')
+        .map((n: string) => n[0])
+        .join('')
+        .slice(0, 2)
+        .toUpperCase();
+      const assignmentTitle = assignmentMap[String(s.assignmentId || '')] || 'Assignment';
+      return {
+        id: `submission-${String(s._id)}`,
+        type: 'assignment_submission',
+        studentName,
+        initials,
+        courseTitle,
+        courseId: rawCourseId || '',
+        message: `${studentName} submitted assignment "${assignmentTitle}" in "${courseTitle}"`,
+        time: s.submittedAt || s.updatedAt || new Date(),
+        actionUrl: rawCourseId ? `/dashboard/teacher/course/${rawCourseId}#assignments` : undefined,
+        actionLabel: 'Review',
+      };
+    });
+
+    const quizSubmissionEvents: ActivityItem[] = quizAttempts.map((a: any) => {
+      const rawCourseId = a.courseId?.toString();
+      const course = courseMap[rawCourseId] || a.courseId;
+      const courseTitle = course?.title || 'Course';
+      const studentName = userMap[a.studentId?.toString()] || 'Student';
+      const initials = studentName
+        .split(' ')
+        .map((n: string) => n[0])
+        .join('')
+        .slice(0, 2)
+        .toUpperCase();
+      const quizTitle = quizMap[String(a.quizId || '')] || 'Quiz';
+      return {
+        id: `quiz-attempt-${String(a._id)}`,
+        type: 'quiz_submission',
+        studentName,
+        initials,
+        courseTitle,
+        courseId: rawCourseId || '',
+        message: `${studentName} submitted quiz "${quizTitle}" in "${courseTitle}"`,
+        time: a.submittedAt || a.updatedAt || new Date(),
+        actionUrl: rawCourseId ? `/dashboard/teacher/course/${rawCourseId}#quizzes` : undefined,
+        actionLabel: 'Review',
+      };
+    });
+
+    const allEvents = [
+      ...enrollmentEvents,
+      ...hydratedReviews,
+      ...discussionEvents,
+      ...submissionEvents,
+      ...quizSubmissionEvents,
+    ].sort(
       (a, b) => new Date(b.time).getTime() - new Date(a.time).getTime()
     );
 

@@ -2,6 +2,7 @@ import { auth } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
 import connectDB from '@/config/db';
 import Quiz from '@/models/Quiz';
+import QuizAttempt from '@/models/QuizAttempt';
 import Enrollment from '@/models/Enrollment';
 
 // Get quiz for taking - strips correct answers
@@ -26,6 +27,9 @@ export async function GET(
     const enrollment = await Enrollment.findOne({ courseId: (quiz as any).courseId, studentId: userId });
     if (!enrollment) return NextResponse.json({ error: 'Enroll in course first' }, { status: 403 });
 
+    const usedAttempts = await QuizAttempt.countDocuments({ quizId: id, studentId: userId });
+    const maxAttempts = Math.max(1, Number((quiz as any).attempts ?? 1));
+
     const questions = ((quiz as any).questions || []).map((q: any, i: number) => ({
       index: i,
       questionText: q.questionText,
@@ -41,6 +45,9 @@ export async function GET(
       totalPoints: (quiz as any).totalPoints,
       passingScore: (quiz as any).passingScore ?? 70,
       timeLimit: (quiz as any).timeLimit ?? 0,
+      maxAttempts,
+      usedAttempts,
+      remainingAttempts: Math.max(0, maxAttempts - usedAttempts),
       questions,
     });
   } catch (error) {

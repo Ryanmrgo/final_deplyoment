@@ -17,6 +17,7 @@ import {
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
 import { FileUploader } from '@/app/components/FileUploader';
+import { FilePreview } from '@/app/components/FilePreview';
 import {
     Select,
     SelectContent,
@@ -31,11 +32,15 @@ import { useRouter } from 'next/navigation';
 import type { ChangeEvent } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { uploadFileToCloudinary } from '@/lib/cloudinaryClient';
+import { uploadUserFile } from '@/lib/clientUpload';
+import { normalizeFileAssets } from '@/lib/fileAsset';
 
 interface CourseManageProps {
   courseId: string;
 }
+
+const ASSIGNMENT_FILE_ACCEPT =
+  '.pdf,.doc,.docx,.ppt,.pptx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain';
 
 type QuizQuestionType = 'multiple-choice' | 'fill-in-the-blank' | 'short-answer';
 
@@ -117,6 +122,7 @@ export function CourseManage({ courseId }: CourseManageProps) {
   const [language, setLanguage] = useState('English');
   const [requirements, setRequirements] = useState('');
   const [outcomes, setOutcomes] = useState('');
+  const [maxEnrollments, setMaxEnrollments] = useState('20');
   const [syllabusUrl, setSyllabusUrl] = useState('');
   const [syllabusName, setSyllabusName] = useState('');
   const [thumbnailUrl, setThumbnailUrl] = useState('');
@@ -138,6 +144,12 @@ export function CourseManage({ courseId }: CourseManageProps) {
   const [quizSaving, setQuizSaving] = useState(false);
   const [quizMessage, setQuizMessage] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [quizAttemptsOpen, setQuizAttemptsOpen] = useState(false);
+  const [selectedQuizForAttempts, setSelectedQuizForAttempts] = useState<any>(null);
+  const [quizAttemptsList, setQuizAttemptsList] = useState<any[]>([]);
+  const [quizAttemptsLoading, setQuizAttemptsLoading] = useState(false);
+  const [quizRemarkDrafts, setQuizRemarkDrafts] = useState<Record<string, string>>({});
+  const [savingQuizRemark, setSavingQuizRemark] = useState<Record<string, boolean>>({});
 
   const [assignments, setAssignments] = useState<any[]>([]);
   const [assignmentsLoading, setAssignmentsLoading] = useState(false);
@@ -227,6 +239,11 @@ export function CourseManage({ courseId }: CourseManageProps) {
         setLanguage(data.language || 'English');
         setRequirements(data.requirements || '');
         setOutcomes(data.outcomes || '');
+        const cap =
+          typeof data.maxEnrollments === 'number' && data.maxEnrollments >= 1
+            ? data.maxEnrollments
+            : 20;
+        setMaxEnrollments(String(cap));
         setSyllabusUrl(data.syllabusUrl || '');
         setSyllabusName(data.syllabusName || '');
         const materials = Array.isArray(data.syllabusMaterials) ? data.syllabusMaterials : [];
@@ -319,20 +336,28 @@ export function CourseManage({ courseId }: CourseManageProps) {
   const fetchSubmissions = async (assignmentId: string) => {
     setSubmissionsLoading(true);
     try {
-      const res = await fetch(`/api/student/submissions?assignmentId=${assignmentId}`);
-      const data = await res.json();
+      const qs = new URLSearchParams({ assignmentId, courseId: courseId || '' });
+      const res = await fetch(`/api/teacher/submissions?${qs.toString()}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data.error || 'Failed to load submissions');
+        setSubmissionsList([]);
+        setGradingData({});
+        return;
+      }
       setSubmissionsList(data.items || []);
-      // Initialize grading data for each submission
       const initialGrading: Record<string, { points: string; feedback: string }> = {};
       (data.items || []).forEach((sub: any) => {
         initialGrading[sub._id] = {
-          points: sub.grade?.points?.toString() || '',
+          points: sub.grade?.points != null ? String(sub.grade.points) : '',
           feedback: sub.grade?.feedback || '',
         };
       });
       setGradingData(initialGrading);
     } catch (error) {
       console.error('Failed to fetch submissions', error);
+      toast.error('Failed to load submissions');
+      setSubmissionsList([]);
     } finally {
       setSubmissionsLoading(false);
     }
@@ -360,9 +385,7 @@ export function CourseManage({ courseId }: CourseManageProps) {
     try {
       const uploadedAttachments = assignmentFiles.length
         ? await Promise.all(
-            assignmentFiles.map((file) =>
-              uploadFileToCloudinary(file, { folder: 'assignments', resourceType: 'raw' })
-            )
+            assignmentFiles.map((file) => uploadUserFile(file, 'assignments'))
           )
         : [];
 
@@ -377,8 +400,33 @@ export function CourseManage({ courseId }: CourseManageProps) {
         url: assignmentUrl.trim(),
       };
 
-      if (uploadedAttachments.length > 0) {
-        payload.attachments = uploadedAttachments.map((item) => item.url);
+      const newAttachmentParts =
+        uploadedAttachments.length > 0
+          ? uploadedAttachments.map((item, index) => {
+              const extension = String(assignmentFiles[index]?.name?.split('.').pop() || '').toLowerCase();
+              return {
+                url: item.url,
+                name: item.name || assignmentFiles[index]?.name || `attachment-${index + 1}`,
+                mimeType: assignmentFiles[index]?.type || '',
+                extension,
+                size: assignmentFiles[index]?.size || undefined,
+              };
+            })
+          : [];
+
+      if (editingAssignment) {
+        const existing = normalizeFileAssets(editingAssignment.attachments);
+        const existingPayload = existing.map((f) => ({
+          url: f.url,
+          name: f.name,
+          mimeType: f.mimeType,
+          extension: f.extension,
+          ...(f.size ? { size: f.size } : {}),
+        }));
+        const merged = [...existingPayload, ...newAttachmentParts];
+        if (merged.length > 0) payload.attachments = merged;
+      } else if (newAttachmentParts.length > 0) {
+        payload.attachments = newAttachmentParts;
       }
 
       let url = '/api/teacher/assignments';
@@ -416,6 +464,8 @@ export function CourseManage({ courseId }: CourseManageProps) {
     setAssignmentMaxPoints(String(assignment.maxPoints || 100));
     setAssignmentDueDate(assignment.dueDate ? new Date(assignment.dueDate).toISOString().slice(0, 16) : '');
     setAssignmentAllowLate(assignment.allowLateSubmission ?? true);
+    setAssignmentUrl(String(assignment.url || ''));
+    setAssignmentFiles([]);
     setEditAssignmentOpen(true);
   };
 
@@ -488,6 +538,53 @@ export function CourseManage({ courseId }: CourseManageProps) {
   const viewSubmissions = async (assignmentId: string) => {
     setGradingAssignmentId(assignmentId);
     await fetchSubmissions(assignmentId);
+  };
+
+  const viewQuizAttempts = async (quiz: any) => {
+    setSelectedQuizForAttempts(quiz);
+    setQuizAttemptsOpen(true);
+    setQuizAttemptsLoading(true);
+    try {
+      const res = await fetch(`/api/teacher/quizzes/${quiz._id}/attempts`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to load quiz attempts');
+      const items = data.items || [];
+      setQuizAttemptsList(items);
+      setQuizRemarkDrafts(
+        Object.fromEntries(items.map((item: any) => [item.id, String(item.teacherRemark || '')]))
+      );
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to load quiz attempts');
+      setQuizAttemptsList([]);
+      setQuizRemarkDrafts({});
+    } finally {
+      setQuizAttemptsLoading(false);
+    }
+  };
+
+  const saveQuizRemark = async (attemptId: string) => {
+    setSavingQuizRemark((prev) => ({ ...prev, [attemptId]: true }));
+    try {
+      const res = await fetch(`/api/teacher/quizzes/attempts/${attemptId}/remark`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teacherRemark: quizRemarkDrafts[attemptId] || '' }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to save remark');
+      setQuizAttemptsList((prev) =>
+        prev.map((item) =>
+          item.id === attemptId
+            ? { ...item, teacherRemark: data?.item?.teacherRemark || '', reviewedAt: data?.item?.reviewedAt || null }
+            : item
+        )
+      );
+      toast.success('Remark saved');
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to save remark');
+    } finally {
+      setSavingQuizRemark((prev) => ({ ...prev, [attemptId]: false }));
+    }
   };
 
   const getComputedQuizMarks = () =>
@@ -735,7 +832,7 @@ export function CourseManage({ courseId }: CourseManageProps) {
 
     if (lessonUploadFile) {
       const resourceType = lessonType === 'video' ? 'video' : 'raw';
-      const uploaded = await uploadFileToCloudinary(lessonUploadFile, {
+      const uploaded = await uploadUserFile(lessonUploadFile, {
         folder: 'course-lessons',
         resourceType,
       });
@@ -1014,11 +1111,9 @@ export function CourseManage({ courseId }: CourseManageProps) {
       const updatedMaterials: SyllabusMaterial[] = [...syllabusMaterials];
 
       if (syllabusFile) {
-        const uploaded = await uploadFileToCloudinary(syllabusFile, {
-          folder: 'course-syllabi',
-          resourceType: 'raw',
-        });
-        updatedMaterials.push({
+        const uploaded = await uploadUserFile(syllabusFile, 'course-syllabi');
+        // Primary syllabus must be first — API sets syllabusUrl from index 0.
+        updatedMaterials.unshift({
           label: syllabusName.trim() || 'Syllabus',
           url: uploaded.url,
           name: uploaded.name,
@@ -1029,10 +1124,7 @@ export function CourseManage({ courseId }: CourseManageProps) {
       if (pendingSyllabusItems.length > 0) {
         for (const item of pendingSyllabusItems) {
           if (!item.file) continue;
-          const uploaded = await uploadFileToCloudinary(item.file, {
-            folder: 'course-syllabi',
-            resourceType: 'raw',
-          });
+          const uploaded = await uploadUserFile(item.file, 'course-syllabi');
           updatedMaterials.push({
             label: item.label.trim() || 'Material',
             url: uploaded.url,
@@ -1053,11 +1145,12 @@ export function CourseManage({ courseId }: CourseManageProps) {
         language: language.trim() || 'English',
         requirements: requirements.trim(),
         outcomes: outcomes.trim(),
+        maxEnrollments: String(Math.max(1, Math.min(1000, Number(maxEnrollments) || 20))),
         syllabusMaterials: JSON.stringify(updatedMaterials),
       };
 
       if (thumbnailFile) {
-        const uploadedThumb = await uploadFileToCloudinary(thumbnailFile, {
+        const uploadedThumb = await uploadUserFile(thumbnailFile, {
           folder: 'course-thumbnails',
           resourceType: 'image',
         });
@@ -1087,6 +1180,10 @@ export function CourseManage({ courseId }: CourseManageProps) {
               language,
               requirements,
               outcomes,
+              maxEnrollments:
+                typeof updatedCourse.maxEnrollments === 'number'
+                  ? updatedCourse.maxEnrollments
+                  : Math.max(1, Math.min(1000, Number(maxEnrollments) || 20)),
               image: updatedCourse.image || prev.image,
               syllabusUrl: updatedCourse.syllabusUrl || prev.syllabusUrl,
               syllabusName: updatedCourse.syllabusName || prev.syllabusName,
@@ -1206,7 +1303,7 @@ export function CourseManage({ courseId }: CourseManageProps) {
                     className="mt-1"
                   />
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
                   <div>
                     <Label htmlFor="duration">Duration (hours)</Label>
                     <Input
@@ -1230,6 +1327,20 @@ export function CourseManage({ courseId }: CourseManageProps) {
                       placeholder="e.g. 49"
                       className="mt-1"
                     />
+                  </div>
+                  <div>
+                    <Label htmlFor="maxEnrollments">Max enrollments</Label>
+                    <Input
+                      id="maxEnrollments"
+                      type="number"
+                      min={1}
+                      max={1000}
+                      value={maxEnrollments}
+                      onChange={(e) => setMaxEnrollments(e.target.value)}
+                      placeholder="e.g. 20"
+                      className="mt-1"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Active students (approval cap).</p>
                   </div>
                   <div>
                     <Label htmlFor="language">Language</Label>
@@ -1742,6 +1853,14 @@ export function CourseManage({ courseId }: CourseManageProps) {
                         <Button size="sm" variant="outline" onClick={() => { setPreviewQuiz(quiz); setQuizPreviewOpen(true); }}>
                           Preview
                         </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-[#1E3A8A] text-[#1E3A8A]"
+                          onClick={() => viewQuizAttempts(quiz)}
+                        >
+                          View Attempts
+                        </Button>
                         {quiz.isPublished ? (
                           <Button size="sm" variant="outline" className="border-yellow-600 text-yellow-700" onClick={() => togglePublishQuiz(quiz._id, false)}>
                             Unpublish
@@ -1763,7 +1882,7 @@ export function CourseManage({ courseId }: CourseManageProps) {
 
 
 
-            <Card className="bg-white">
+            <Card id="assignments" className="bg-white scroll-mt-24">
               <CardHeader>
                 <CardTitle className="text-xl text-gray-900">Assignments</CardTitle>
                 <p className="text-sm text-gray-600">Create and manage assignments for this course.</p>
@@ -1798,6 +1917,18 @@ export function CourseManage({ courseId }: CourseManageProps) {
                       onChange={(e) => setAssignmentDescription(e.target.value)}
                       placeholder="Describe the assignment"
                       rows={3}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <FileOrUrlInput
+                      label="Attachments (PDF, Word, PowerPoint — stored locally when USE_LOCAL_UPLOADS is on)"
+                      accept={ASSIGNMENT_FILE_ACCEPT}
+                      multiple={true}
+                      maxSizeMB={20}
+                      onFilesChange={setAssignmentFiles}
+                      onUrlChange={setAssignmentUrl}
+                      allowUrl={true}
+                      allowFiles={true}
                     />
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -2417,8 +2548,8 @@ export function CourseManage({ courseId }: CourseManageProps) {
               </div>
               <div className="space-y-1.5">
                 <FileOrUrlInput
-                  label="Assignment Files (Optional)"
-                  accept=".pdf,.doc,.docx,.txt,.ppt,.pptx"
+                  label="Assignment files (optional — new uploads are added to existing attachments)"
+                  accept={ASSIGNMENT_FILE_ACCEPT}
                   multiple={true}
                   maxSizeMB={20}
                   onFilesChange={setAssignmentFiles}
@@ -2479,6 +2610,16 @@ export function CourseManage({ courseId }: CourseManageProps) {
               <p className="text-gray-700 whitespace-pre-wrap">{previewAssignment?.description}</p>
               <p className="text-sm text-gray-600">Allow Late: {previewAssignment?.allowLateSubmission ? 'Yes' : 'No'}</p>
               <p className="text-sm text-gray-600">Status: {previewAssignment?.isPublished ? 'Published' : 'Draft'}</p>
+              {normalizeFileAssets(previewAssignment?.attachments).length > 0 ? (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-gray-700">Attachments</p>
+                  <div className="grid gap-2">
+                    {normalizeFileAssets(previewAssignment?.attachments).map((file, idx) => (
+                      <FilePreview key={`${file.url}-${idx}`} file={file} />
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setPreviewAssignmentOpen(false)}>Close</Button>
@@ -2570,18 +2711,14 @@ export function CourseManage({ courseId }: CourseManageProps) {
                           <p className="text-sm text-gray-600 whitespace-pre-wrap">{sub.content}</p>
                         </div>
                       )}
-                      {sub.attachments?.length > 0 && (
+                      {normalizeFileAssets(sub.attachments).length > 0 && (
                         <div>
                           <p className="text-sm font-medium text-gray-700">Attachments:</p>
-                          <ul className="list-disc list-inside text-sm text-blue-600">
-                            {sub.attachments.map((url: string, idx: number) => (
-                              <li key={idx}>
-                                <a href={url} target="_blank" rel="noopener noreferrer" className="hover:underline">
-                                  Attachment {idx + 1}
-                                </a>
-                              </li>
+                          <div className="grid gap-2 mt-2">
+                            {normalizeFileAssets(sub.attachments).map((file, idx) => (
+                              <FilePreview key={`${file.url}-${idx}`} file={file} />
                             ))}
-                          </ul>
+                          </div>
                         </div>
                       )}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
@@ -2626,6 +2763,85 @@ export function CourseManage({ courseId }: CourseManageProps) {
                         >
                           {submittingGrade[sub._id] ? 'Saving...' : 'Save Grade'}
                         </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Quiz Attempts Modal */}
+        {quizAttemptsOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+              <div className="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center">
+                <h2 className="text-xl font-bold text-gray-900">
+                  Quiz Attempts {selectedQuizForAttempts?.title ? `- ${selectedQuizForAttempts.title}` : ''}
+                </h2>
+                <button
+                  onClick={() => {
+                    setQuizAttemptsOpen(false);
+                    setSelectedQuizForAttempts(null);
+                    setQuizAttemptsList([]);
+                  }}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="p-6 space-y-4">
+                {quizAttemptsLoading ? (
+                  <p className="text-center text-gray-600">Loading attempts...</p>
+                ) : quizAttemptsList.length === 0 ? (
+                  <p className="text-center text-gray-600">No quiz attempts submitted yet.</p>
+                ) : (
+                  quizAttemptsList.map((item) => (
+                    <div key={item.id} className="border rounded-lg p-4 space-y-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-semibold text-gray-900">{item.studentName}</p>
+                          <p className="text-xs text-gray-600">{item.studentEmail || item.studentId}</p>
+                          <p className="text-xs text-gray-600">
+                            Attempt #{item.attemptNumber} • Submitted {new Date(item.submittedAt).toLocaleString()}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm font-semibold text-gray-900">
+                            {item.score}/{item.maxScore} ({item.percentage}%)
+                          </p>
+                          <Badge className={item.passed ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}>
+                            {item.passed ? 'Passed' : 'Failed'}
+                          </Badge>
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Teacher Remark</Label>
+                        <Textarea
+                          value={quizRemarkDrafts[item.id] || ''}
+                          onChange={(e) =>
+                            setQuizRemarkDrafts((prev) => ({
+                              ...prev,
+                              [item.id]: e.target.value,
+                            }))
+                          }
+                          rows={3}
+                          placeholder="Add your remarks for this student attempt..."
+                        />
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs text-gray-500">
+                          {item.reviewedAt ? `Last reviewed: ${new Date(item.reviewedAt).toLocaleString()}` : 'Not reviewed yet'}
+                        </p>
+                        <Button
+                          size="sm"
+                          onClick={() => saveQuizRemark(item.id)}
+                          disabled={savingQuizRemark[item.id]}
+                          className="bg-[#1E3A8A] hover:bg-[#1E3A8A]/90"
+                        >
+                          {savingQuizRemark[item.id] ? 'Saving...' : 'Save Remark'}
+                        </Button>
                       </div>
                     </div>
                   ))

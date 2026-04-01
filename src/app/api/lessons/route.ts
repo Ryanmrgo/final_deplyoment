@@ -7,6 +7,7 @@ import Enrollment from '@/models/Enrollment';
 import { getEffectiveRole } from '@/lib/auth';
 import { uploadToCloudinary } from '@/lib/cloudinary';
 import { saveFileLocally } from '@/lib/localUpload';
+import { useCloudinaryForStorage } from '@/lib/uploadStrategy';
 import {
   LESSON_MAX_UPLOAD_MB,
   MAX_LESSON_UPLOAD_BYTES,
@@ -17,22 +18,15 @@ import {
   toYoutubeEmbedUrl,
 } from '@/lib/lesson';
 
-const canUseCloudinary = () =>
-  Boolean(
-    process.env.CLOUDINARY_CLOUD_NAME &&
-      process.env.CLOUDINARY_API_KEY &&
-      process.env.CLOUDINARY_API_SECRET
-  );
-
 const uploadLessonFile = async (file: File) => {
-  if (canUseCloudinary()) {
+  if (useCloudinaryForStorage()) {
     return uploadToCloudinary(file, {
       folder: 'course-lessons',
       resourceType: file.type.startsWith('video/') ? 'video' : 'raw',
     });
   }
 
-  return saveFileLocally(file);
+  return saveFileLocally(file, 'course-lessons');
 };
 
 export async function GET(req: Request) {

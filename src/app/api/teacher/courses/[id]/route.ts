@@ -1,9 +1,13 @@
 import { NextResponse } from 'next/server';
+import mongoose from 'mongoose';
 import connectDB from '@/config/db';
 import Course from '@/models/Course';
 import Lesson from '@/models/Lesson';
+import Enrollment from '@/models/Enrollment';
 import { getEffectiveRole } from '@/lib/auth';
 import { uploadToCloudinary } from '@/lib/cloudinary';
+import { saveFileLocally } from '@/lib/localUpload';
+import { useCloudinaryForStorage } from '@/lib/uploadStrategy';
 
 const MAX_SYLLABUS_BYTES = 20 * 1024 * 1024;
 const MAX_THUMBNAIL_BYTES = 5 * 1024 * 1024;
@@ -125,6 +129,25 @@ export async function PATCH(
     if (body.language !== undefined) updates.language = body.language;
     if (body.requirements !== undefined) updates.requirements = body.requirements;
     if (body.outcomes !== undefined) updates.outcomes = body.outcomes;
+    if (body.maxEnrollments !== undefined) {
+      const n = Number(body.maxEnrollments);
+      if (!Number.isFinite(n) || n < 1 || n > 1000) {
+        return NextResponse.json({ error: 'maxEnrollments must be between 1 and 1000' }, { status: 400 });
+      }
+      const nextMax = Math.floor(n);
+      const courseOid = new mongoose.Types.ObjectId(id);
+      const activeCount = await Enrollment.countDocuments({
+        courseId: courseOid,
+        status: 'Active',
+      });
+      if (nextMax < activeCount) {
+        return NextResponse.json(
+          { error: `maxEnrollments cannot be below current active enrollments (${activeCount}).` },
+          { status: 400 }
+        );
+      }
+      updates.maxEnrollments = nextMax;
+    }
 
     let existingSyllabusMaterials = Array.isArray((course as any).syllabusMaterials)
       ? (course as any).syllabusMaterials
@@ -173,10 +196,12 @@ export async function PATCH(
           allowedExtensions: SYLLABUS_EXTENSIONS,
         });
 
-        const upload = await uploadToCloudinary(file, {
-          folder: 'course-syllabi',
-          resourceType: 'raw',
-        });
+        const upload = useCloudinaryForStorage()
+          ? await uploadToCloudinary(file, {
+              folder: 'course-syllabi',
+              resourceType: 'raw',
+            })
+          : await saveFileLocally(file, 'course-syllabi');
 
         uploadedSyllabusMaterials.push({
           label: syllabusLabels[index]?.trim() || `Material ${existingSyllabusMaterials.length + index + 1}`,
@@ -229,10 +254,12 @@ export async function PATCH(
         allowedMimes: THUMBNAIL_MIME_TYPES,
         allowedExtensions: THUMBNAIL_EXTENSIONS,
       });
-      const thumbnailUpload = await uploadToCloudinary(thumbnailFile, {
-        folder: 'course-thumbnails',
-        resourceType: 'image',
-      });
+      const thumbnailUpload = useCloudinaryForStorage()
+        ? await uploadToCloudinary(thumbnailFile, {
+            folder: 'course-thumbnails',
+            resourceType: 'image',
+          })
+        : await saveFileLocally(thumbnailFile, 'course-thumbnails');
       updates.image = thumbnailUpload.url;
     }
 

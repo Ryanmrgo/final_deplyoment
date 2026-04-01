@@ -1,27 +1,24 @@
 import connectDB from '@/config/db';
 import { getEffectiveRole } from '@/lib/auth';
 import { uploadToCloudinary } from '@/lib/cloudinary';
+import { normalizeFileAsset, normalizeFileAssets } from '@/lib/fileAsset';
 import { saveFileLocally } from '@/lib/localUpload';
+import { useCloudinaryForStorage } from '@/lib/uploadStrategy';
+import { createNotification } from '@/lib/notifications';
 import Assignment from '@/models/Assignment';
 import Submission from '@/models/Submission';
+import User from '@/models/User';
 import mongoose from 'mongoose';
 import { NextResponse } from 'next/server';
 
-const canUseCloudinary = () =>
-  Boolean(
-    process.env.CLOUDINARY_CLOUD_NAME &&
-      process.env.CLOUDINARY_API_KEY &&
-      process.env.CLOUDINARY_API_SECRET
-  );
-
 const uploadFile = async (file: File) => {
-  if (canUseCloudinary()) {
+  if (useCloudinaryForStorage()) {
     return uploadToCloudinary(file, {
       folder: 'submissions',
       resourceType: 'raw',
     });
   }
-  return saveFileLocally(file);
+  return saveFileLocally(file, 'submissions');
 };
 
 // GET /api/student/submissions?assignmentId=... or ?courseId=...
@@ -47,9 +44,15 @@ export async function GET(req: Request) {
 
   const submissions = await Submission.find(query)
     .populate('assignmentId', 'title maxPoints dueDate')
-    .sort({ submittedAt: -1 });
+    .sort({ submittedAt: -1 })
+    .lean();
 
-  return NextResponse.json({ items: submissions });
+  return NextResponse.json({
+    items: submissions.map((item: any) => ({
+      ...item,
+      attachments: normalizeFileAssets(item.attachments),
+    })),
+  });
 }
 
 // POST /api/student/submissions
@@ -65,7 +68,7 @@ export async function POST(req: Request) {
   let courseId: string | null = null;
   let content = '';
   const attachmentFiles: File[] = [];
-  let attachmentUrls: string[] = [];
+  let attachmentUrls = normalizeFileAssets([]);
 
   if (contentType.includes('multipart/form-data')) {
     const formData = await req.formData();
@@ -82,11 +85,16 @@ export async function POST(req: Request) {
     const body = await req.json();
     assignmentId = body.assignmentId;
     courseId = body.courseId;
-    content = body.content || '';
+    const text = String(body.content || '').trim();
+    const link = String(body.url || '').trim();
+    content =
+      link && text
+        ? `${text}\n\nLink: ${link}`
+        : link
+          ? `Link: ${link}`
+          : text;
     if (Array.isArray(body.attachments)) {
-      attachmentUrls = body.attachments
-        .map((item: unknown) => String(item || '').trim())
-        .filter(Boolean);
+      attachmentUrls = normalizeFileAssets(body.attachments);
     }
   }
 
@@ -130,7 +138,14 @@ export async function POST(req: Request) {
     if (attachmentFiles.length > 0) {
       for (const file of attachmentFiles) {
         const uploaded = await uploadFile(file);
-        attachmentUrls.push(uploaded.url);
+        const normalized = normalizeFileAsset({
+          url: uploaded.url,
+          name: uploaded.name || file.name,
+          mimeType: file.type || uploaded.type || '',
+          extension: String(file.name.split('.').pop() || '').toLowerCase(),
+          size: file.size,
+        });
+        if (normalized) attachmentUrls.push(normalized);
       }
     }
 
@@ -147,6 +162,30 @@ export async function POST(req: Request) {
     });
 
     await submission.save();
+
+    const submitter =
+      (await User.findById(userId).select('name').lean()) as { name?: string } | null;
+    const submitterName = submitter?.name?.trim() || 'A student';
+    const assignTitle = String(assignment.title || 'assignment');
+    const courseIdStr = String(courseId);
+
+    await createNotification({
+      recipientId: String(assignment.instructorId),
+      recipientRole: 'teacher',
+      type: 'assignment.submitted',
+      title: 'New assignment submission',
+      message: `${submitterName} submitted "${assignTitle}". Open the course to review and grade.`,
+      entityType: 'assignment',
+      entityId: String(assignment._id),
+      actionUrl: `/dashboard/teacher/course/${courseIdStr}#assignments`,
+      priority: 'high',
+      metadata: {
+        assignmentId: String(assignment._id),
+        courseId: courseIdStr,
+        studentId: userId,
+        submissionId: String(submission._id),
+      },
+    });
 
     // Populate assignment data for response
     await submission.populate('assignmentId', 'title maxPoints dueDate');

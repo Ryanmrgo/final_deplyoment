@@ -6,7 +6,7 @@ const submissionSchema = new mongoose.Schema(
     assignmentId: { type: mongoose.Schema.Types.ObjectId, ref: 'assignment', required: true },
     courseId: { type: mongoose.Schema.Types.ObjectId, ref: 'course', required: true },
     content: { type: String, default: '' }, // submission text or URL
-    attachments: [{ type: String }], // URLs to submitted files
+    attachments: [{ type: mongoose.Schema.Types.Mixed }], // FileAsset[] (backward compatible with string URLs)
     submittedAt: { type: Date, required: true },
     isLate: { type: Boolean, default: false },
     status: { type: String, enum: ['Submitted', 'Graded', 'Returned'], default: 'Submitted' },

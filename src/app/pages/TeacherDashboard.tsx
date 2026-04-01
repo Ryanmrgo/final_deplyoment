@@ -21,7 +21,7 @@ import type { ChangeEvent } from 'react';
 import { useAuth } from '@/app/components/AuthContext';
 import { toast } from 'sonner';
 import { DEFAULT_LESSON_MAX_UPLOAD_MB } from '@/lib/lesson';
-import { uploadFileToCloudinary } from '@/lib/cloudinaryClient';
+import { uploadUserFile } from '@/lib/clientUpload';
 
 const DEFAULT_CATEGORIES = [
   'General',
@@ -359,7 +359,7 @@ export function TeacherDashboard() {
       };
 
       if (createThumbnailFile) {
-        const uploaded = await uploadFileToCloudinary(createThumbnailFile, {
+        const uploaded = await uploadUserFile(createThumbnailFile, {
           folder: 'course-thumbnails',
           resourceType: 'image',
         });
@@ -404,17 +404,14 @@ export function TeacherDashboard() {
               lessonPayload.youtubeUrl = lesson.youtubeUrl.trim();
             } else if (lesson.file) {
               if (lesson.type === 'video') {
-                const uploaded = await uploadFileToCloudinary(lesson.file, {
+                const uploaded = await uploadUserFile(lesson.file, {
                   folder: 'course-lessons',
                   resourceType: 'video',
                 });
                 lessonPayload.videoType = 'upload';
                 lessonPayload.videoUrl = uploaded.url;
               } else {
-                const uploaded = await uploadFileToCloudinary(lesson.file, {
-                  folder: 'course-lessons',
-                  resourceType: 'raw',
-                });
+                const uploaded = await uploadUserFile(lesson.file, 'course-lessons');
                 lessonFiles.push({
                   fileName: uploaded.name,
                   fileUrl: uploaded.url,
@@ -424,10 +421,7 @@ export function TeacherDashboard() {
             }
 
             if ((lesson.type === 'video' || lesson.type === 'youtube') && lesson.supportingFile) {
-              const uploadedSupport = await uploadFileToCloudinary(lesson.supportingFile, {
-                folder: 'course-lessons',
-                resourceType: 'raw',
-              });
+              const uploadedSupport = await uploadUserFile(lesson.supportingFile, 'course-lessons');
               lessonFiles.push({
                 fileName: uploadedSupport.name,
                 fileUrl: uploadedSupport.url,
@@ -1021,10 +1015,10 @@ export function TeacherDashboard() {
                             {new Date(item.time).toLocaleDateString()} • {new Date(item.time).toLocaleTimeString()}
                           </p>
                         </div>
-                        {item.type === 'discussion' && item.courseId ? (
-                          <Link href={`/courses/${item.courseId}#teacher-discussions`}>
+                        {item.actionUrl ? (
+                          <Link href={item.actionUrl}>
                             <Button variant="outline" size="sm" className="border-[#1E3A8A] text-[#1E3A8A]">
-                              Reply
+                              {item.actionLabel || 'Open'}
                             </Button>
                           </Link>
                         ) : null}

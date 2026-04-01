@@ -20,6 +20,9 @@ const quizAttemptSchema = new mongoose.Schema(
     timeSpent: { type: Number, default: 0 }, // seconds
     submittedAt: { type: Date, default: Date.now },
     attemptNumber: { type: Number, default: 1 },
+    teacherRemark: { type: String, default: '' },
+    reviewedAt: { type: Date, default: null },
+    reviewedBy: { type: String, default: '' },
   },
   { minimize: false }
 );

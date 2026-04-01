@@ -7,6 +7,7 @@ const enrollmentSchema = new mongoose.Schema(
     enrolledAt: { type: Date, default: Date.now },
     completedAt: { type: Date, default: null },
     progress: { type: Number, default: 0, min: 0, max: 100 }, // percentage
+    completedLessonIds: [{ type: String }], // completed lesson IDs
     status: { type: String, enum: ['Active', 'Completed', 'Dropped'], default: 'Active' },
     lastAccessedAt: { type: Date, default: Date.now },
     certificate: {

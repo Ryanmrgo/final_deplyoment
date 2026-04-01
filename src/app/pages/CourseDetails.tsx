@@ -2,6 +2,9 @@
 
 import { useAuth } from '@/app/components/AuthContext';
 import { FileOrUrlInput } from '@/app/components/FileOrUrlInput';
+import { FilePreview } from '@/app/components/FilePreview';
+import { EnrollButton } from '@/app/components/EnrollButton';
+import { EnrollmentStatus } from '@/app/components/EnrollmentStatus';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/app/components/ui/accordion';
 import { Avatar, AvatarFallback } from '@/app/components/ui/avatar';
 import { Badge } from '@/app/components/ui/badge';
@@ -16,11 +19,15 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { uploadFileToCloudinary } from '@/lib/cloudinaryClient';
+import { uploadUserFile } from '@/lib/clientUpload';
+import { normalizeFileAssets } from '@/lib/fileAsset';
 
 interface CourseDetailsProps {
   id: string;
 }
+
+const ASSIGNMENT_SUBMIT_ACCEPT =
+  '.pdf,.doc,.docx,.ppt,.pptx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain';
 
 export function CourseDetails({ id }: CourseDetailsProps) {
   const { user, userRole, isLoading } = useAuth();
@@ -30,8 +37,8 @@ export function CourseDetails({ id }: CourseDetailsProps) {
   const [isEnrolled, setIsEnrolled] = useState(false);
   const [enrollmentId, setEnrollmentId] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
-  const [isEnrolling, setIsEnrolling] = useState(false);
-  const [enrollError, setEnrollError] = useState('');
+  const [enrollmentRequestStatus, setEnrollmentRequestStatus] = useState<'pending' | 'approved' | 'rejected' | null>(null);
+  const [enrollmentStatusLoading, setEnrollmentStatusLoading] = useState(false);
   const [updatingProgress, setUpdatingProgress] = useState(false);
   const [lessons, setLessons] = useState<any[]>([]);
   const [lessonsLoading, setLessonsLoading] = useState(false);
@@ -53,8 +60,8 @@ export function CourseDetails({ id }: CourseDetailsProps) {
   const [quizItems, setQuizItems] = useState<any[]>([]);
   const [quizLoading, setQuizLoading] = useState(false);
   const [completedLessonIds, setCompletedLessonIds] = useState<string[]>([]);
-  const [autoMarkingLessons, setAutoMarkingLessons] = useState<Set<string>>(new Set());
   const [autoMarkCountdown, setAutoMarkCountdown] = useState<Record<string, number>>({});
+  const [completingLessonIds, setCompletingLessonIds] = useState<Set<string>>(new Set());
 
   const setSubmissionDraft = (assignmentId: string, field: 'content' | 'files' | 'url', value: any) => {
     setSubmissionDrafts(prev => ({
@@ -66,6 +73,27 @@ export function CourseDetails({ id }: CourseDetailsProps) {
         [field]: value,
       },
     }));
+  };
+
+  const refreshEnrollmentRequestStatus = async () => {
+    if (!user || userRole !== 'student') {
+      setEnrollmentRequestStatus(null);
+      return;
+    }
+    setEnrollmentStatusLoading(true);
+    try {
+      const res = await fetch(`/api/enrollment-request/status?courseId=${id}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to get enrollment status');
+      setEnrollmentRequestStatus((data.status as 'pending' | 'approved' | 'rejected' | null) ?? null);
+      if (data.status === 'approved') {
+        setIsEnrolled(true);
+      }
+    } catch {
+      setEnrollmentRequestStatus(null);
+    } finally {
+      setEnrollmentStatusLoading(false);
+    }
   };
 
   const normalizeVideoUrl = (url: string) => {
@@ -102,18 +130,6 @@ export function CourseDetails({ id }: CourseDetailsProps) {
     }
   };
 
-  const getLessonStorageKey = () => {
-    const userId = String((user as any)?.id || (user as any)?._id || (user as any)?.userId || 'anonymous');
-    return `course:${id}:completedLessons:${userId}`;
-  };
-
-  const calculateProgressFromCompletedLessons = (completedIds: string[], currentLessons: any[]) => {
-    const totalLessons = currentLessons.length;
-    if (totalLessons === 0) return 0;
-    const completedCount = currentLessons.filter((lesson) => completedIds.includes(String(lesson.id))).length;
-    return Math.round((completedCount / totalLessons) * 100);
-  };
-
   useEffect(() => {
     if (isEnrolled && userRole === 'student') {
       const fetchData = async () => {
@@ -140,13 +156,19 @@ export function CourseDetails({ id }: CourseDetailsProps) {
   const submitAssignment = async (assignmentId: string, courseId: string) => {
     const draft = submissionDrafts[assignmentId];
     if (!draft) return;
+    const text = String(draft.content || '').trim();
+    const link = String(draft.url || '').trim();
+    if (!text && !link && draft.files.length === 0) {
+      toast.error('Add text, a file, or a link before submitting.');
+      return;
+    }
 
     setSubmitting(prev => ({ ...prev, [assignmentId]: true }));
     try {
       const uploadedAttachments = draft.files.length
         ? await Promise.all(
             draft.files.map((file) =>
-              uploadFileToCloudinary(file, { folder: 'submissions', resourceType: 'raw' })
+              uploadUserFile(file, 'submissions')
             )
           )
         : [];
@@ -154,12 +176,21 @@ export function CourseDetails({ id }: CourseDetailsProps) {
       const payload: Record<string, unknown> = {
         assignmentId,
         courseId,
-        content: draft.content,
-        url: draft.url,
+        content: text,
+        url: link,
       };
 
       if (uploadedAttachments.length > 0) {
-        payload.attachments = uploadedAttachments.map((item) => item.url);
+        payload.attachments = uploadedAttachments.map((item, index) => {
+          const extension = String(draft.files[index]?.name?.split('.').pop() || '').toLowerCase();
+          return {
+            url: item.url,
+            name: item.name || draft.files[index]?.name || `submission-${index + 1}`,
+            mimeType: draft.files[index]?.type || '',
+            extension,
+            size: draft.files[index]?.size || undefined,
+          };
+        });
       }
 
       const res = await fetch('/api/student/submissions', {
@@ -191,6 +222,7 @@ export function CourseDetails({ id }: CourseDetailsProps) {
         setIsEnrolled(data.isEnrolled || false);
         setEnrollmentId(data.enrollmentId || null);
         setProgress(data.enrollmentProgress ?? 0);
+        setCompletedLessonIds(Array.isArray(data.completedLessonIds) ? data.completedLessonIds.map((value: unknown) => String(value)) : []);
         if (data?.myReview) {
           setReviewRating(Number(data.myReview.rating) || 5);
           setReviewComment(String(data.myReview.comment || ''));
@@ -201,22 +233,8 @@ export function CourseDetails({ id }: CourseDetailsProps) {
   }, [id]);
 
   useEffect(() => {
-    if (!user || lessons.length === 0) {
-      setCompletedLessonIds([]);
-      return;
-    }
-
-    try {
-      const raw = localStorage.getItem(getLessonStorageKey());
-      const parsed = raw ? JSON.parse(raw) : [];
-      const valid = Array.isArray(parsed)
-        ? parsed.map((value) => String(value)).filter((lessonId) => lessons.some((lesson) => String(lesson.id) === lessonId))
-        : [];
-      setCompletedLessonIds(valid);
-    } catch {
-      setCompletedLessonIds([]);
-    }
-  }, [id, user, lessons]);
+    refreshEnrollmentRequestStatus();
+  }, [id, user?.id, userRole]);
 
   useEffect(() => {
     const isInstructor = Boolean(course?.isInstructor);
@@ -262,75 +280,45 @@ export function CourseDetails({ id }: CourseDetailsProps) {
     }
   }, [id, isEnrolled, user, userRole, course?.isInstructor]);
 
-  const handleEnroll = async () => {
-    if (isLoading || !user || userRole !== 'student') return;
-    const previousEnrolled = isEnrolled;
-    const previousProgress = progress;
-    setIsEnrolled(true);
-    setProgress(0);
-    setIsEnrolling(true);
-    setEnrollError('');
-    const toastId = toast.loading('Enrolling in course...');
-    try {
-      const res = await fetch('/api/enrollment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ courseId: id }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to enroll');
-      setIsEnrolled(true);
-      setProgress(0);
-      toast.success('Enrolled successfully.', { id: toastId });
-    } catch (e: any) {
-      setIsEnrolled(previousEnrolled);
-      setProgress(previousProgress);
-      setEnrollError(e.message || 'Failed to enroll');
-      toast.error(e?.message || 'Failed to enroll', { id: toastId });
-    } finally {
-      setIsEnrolling(false);
-    }
-  };
-
-  const handleUpdateProgress = async (newProgress: number) => {
-    if (!enrollmentId || newProgress === progress) return;
-    const previousProgress = progress;
-    setProgress(newProgress);
-    setUpdatingProgress(true);
-    const toastId = toast.loading('Updating progress...');
-    try {
-      const res = await fetch(`/api/student/enrollments/${enrollmentId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ progress: newProgress }),
-      });
-      if (!res.ok) throw new Error('Failed to update progress');
-      toast.success('Progress updated.', { id: toastId });
-    } catch (e: any) {
-      setProgress(previousProgress);
-      toast.error(e?.message || 'Failed to update progress', { id: toastId });
-    } finally {
-      setUpdatingProgress(false);
-    }
-  };
-
-  const handleCompleteLesson = async (lessonId: string) => {
+  const handleCompleteLesson = async (lessonId: string, source: 'video' | 'text' | 'document' | 'fallback' = 'fallback') => {
     if (!enrollmentId || userRole !== 'student' || !isEnrolled) return;
 
     const normalizedLessonId = String(lessonId);
     if (completedLessonIds.includes(normalizedLessonId)) return;
+    if (completingLessonIds.has(normalizedLessonId)) return;
 
-    const nextCompleted = [...completedLessonIds, normalizedLessonId];
-    setCompletedLessonIds(nextCompleted);
-
+    setCompletingLessonIds((prev) => new Set(prev).add(normalizedLessonId));
+    setUpdatingProgress(true);
+    const previousCompleted = completedLessonIds;
+    const optimisticCompleted = [...previousCompleted, normalizedLessonId];
+    setCompletedLessonIds(optimisticCompleted);
+    const totalLessons = lessons.length || 1;
+    setProgress(Math.round((optimisticCompleted.length / totalLessons) * 100));
     try {
-      localStorage.setItem(getLessonStorageKey(), JSON.stringify(nextCompleted));
-    } catch {
-      // ignore localStorage failures
+      const res = await fetch(`/api/student/enrollments/${enrollmentId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lessonId: normalizedLessonId, completed: true, source }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to sync progress');
+      const updatedCompleted = Array.isArray(data?.enrollment?.completedLessonIds)
+        ? data.enrollment.completedLessonIds.map((value: unknown) => String(value))
+        : optimisticCompleted;
+      setCompletedLessonIds(updatedCompleted);
+      setProgress(Number(data?.enrollment?.progress ?? Math.round((updatedCompleted.length / totalLessons) * 100)));
+    } catch (e: any) {
+      setCompletedLessonIds(previousCompleted);
+      setProgress(Math.round((previousCompleted.length / totalLessons) * 100));
+      toast.error(e?.message || 'Failed to sync lesson completion');
+    } finally {
+      setCompletingLessonIds((prev) => {
+        const next = new Set(prev);
+        next.delete(normalizedLessonId);
+        return next;
+      });
+      setUpdatingProgress(false);
     }
-
-    const computedProgress = calculateProgressFromCompletedLessons(nextCompleted, lessons);
-    await handleUpdateProgress(computedProgress);
   };
 
   // Auto-mark video lesson after 30 seconds of viewing (user can still manually complete)
@@ -340,20 +328,20 @@ export function CourseDetails({ id }: CourseDetailsProps) {
     lessons.forEach((lesson) => {
       const lessonId = String(lesson.id);
 
-      // Only auto-mark video and text lessons (not PDF/PPT that require download)
-      if (['video', 'text'].includes(lesson.type) && lesson.content && isEnrolled && userRole === 'student' && !completedLessonIds.includes(lessonId)) {
-        // Start countdown at 30 seconds
+      // Auto-mark lessons after dwell thresholds; backend validates ownership and idempotency.
+      if (['video', 'text', 'pdf', 'ppt'].includes(lesson.type) && isEnrolled && userRole === 'student' && !completedLessonIds.includes(lessonId)) {
+        const startSeconds = lesson.type === 'video' ? 60 : lesson.type === 'text' ? 20 : 30;
         if (!autoMarkCountdown[lessonId]) {
-          setAutoMarkCountdown((prev) => ({ ...prev, [lessonId]: 30 }));
+          setAutoMarkCountdown((prev) => ({ ...prev, [lessonId]: startSeconds }));
         }
 
         timers[lessonId] = setInterval(() => {
           setAutoMarkCountdown((prev) => {
             const current = prev[lessonId] ?? 0;
             if (current <= 1) {
-              // Auto-mark when countdown reaches 0
               if (!completedLessonIds.includes(lessonId)) {
-                handleCompleteLesson(lessonId);
+                const source = lesson.type === 'video' ? 'video' : lesson.type === 'text' ? 'text' : 'document';
+                handleCompleteLesson(lessonId, source);
               }
               return { ...prev, [lessonId]: 0 };
             }
@@ -516,6 +504,11 @@ export function CourseDetails({ id }: CourseDetailsProps) {
     .map((item: string) => item.trim())
     .filter(Boolean);
   const reviews = course.reviews || [];
+  const enrolledCount =
+    typeof course.enrolledCount === 'number' ? course.enrolledCount : Number(course.students) || 0;
+  const maxEnrollmentsCap =
+    typeof course.maxEnrollments === 'number' && course.maxEnrollments >= 1 ? course.maxEnrollments : 20;
+  const enrollmentFull = userRole === 'student' && !isEnrolled && enrolledCount >= maxEnrollmentsCap;
 
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
@@ -682,7 +675,32 @@ export function CourseDetails({ id }: CourseDetailsProps) {
                     <p className="text-sm text-gray-600">No lessons published yet.</p>
                   ) : (
                     <div className="space-y-4">
-                      {lessons.map((lesson) => (
+                      {lessons.map((lesson) => {
+                        const materialFiles: { fileUrl: string; fileName: string }[] = (() => {
+                          const raw = Array.isArray(lesson.files) ? lesson.files : [];
+                          const fromFiles = raw
+                            .filter((f: any) => f && typeof f.fileUrl === 'string' && f.fileUrl.trim())
+                            .map((f: any) => ({
+                              fileUrl: String(f.fileUrl).trim(),
+                              fileName: String(f.fileName || f.fileUrl.split('/').pop() || 'material').trim(),
+                            }));
+                          if (fromFiles.length > 0) return fromFiles;
+                          const u = typeof lesson.fileUrl === 'string' ? lesson.fileUrl.trim() : '';
+                          if (!u) return [];
+                          if (lesson.type === 'video' && lesson.content) return [];
+                          const ext = String(lesson.fileType || 'file').replace(/^\./, '');
+                          return [
+                            {
+                              fileUrl: u,
+                              fileName:
+                                ext && ext !== 'file'
+                                  ? `material.${ext}`
+                                  : u.split('/').pop() || 'material',
+                            },
+                          ];
+                        })();
+
+                        return (
                         <div key={lesson.id} className="border rounded-lg p-4">
                           <div className="flex items-center justify-between gap-3 mb-2">
                             <h3 className="font-semibold text-gray-900">{lesson.title}</h3>
@@ -710,15 +728,35 @@ export function CourseDetails({ id }: CourseDetailsProps) {
                             </div>
                           ) : null}
 
-                          {(lesson.type === 'pdf' || lesson.type === 'ppt') && lesson.fileUrl ? (
-                            <a
-                              href={lesson.fileUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-sm text-[#1E3A8A] underline"
-                            >
-                              Open material
-                            </a>
+                          {lesson.type === 'video' && !lesson.content && lesson.fileUrl ? (
+                            <div className="space-y-3">
+                              <video
+                                controls
+                                className="w-full max-h-[28rem] rounded-md border bg-black"
+                                src={String(lesson.fileUrl)}
+                              />
+                            </div>
+                          ) : null}
+
+                          {materialFiles.length > 0 ? (
+                            <div className="mt-2 space-y-2">
+                              <p className="text-sm font-medium text-gray-700">Lesson materials</p>
+                              <ul className="space-y-2">
+                                {materialFiles.map((f, idx) => (
+                                  <li key={`${f.fileUrl}-${idx}`} className="flex flex-wrap items-center gap-3 text-sm">
+                                    <span className="text-gray-800 truncate max-w-[220px]" title={f.fileName}>
+                                      {f.fileName}
+                                    </span>
+                                    <a href={f.fileUrl} target="_blank" rel="noreferrer" className="text-[#1E3A8A] underline">
+                                      Open
+                                    </a>
+                                    <a href={f.fileUrl} download className="text-[#1E3A8A] underline">
+                                      Download
+                                    </a>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
                           ) : null}
 
                           {lesson.type === 'text' && lesson.content ? (
@@ -728,29 +766,13 @@ export function CourseDetails({ id }: CourseDetailsProps) {
                           {isEnrolled && userRole === 'student' ? (
                             <div className="mt-4 space-y-2">
                               {completedLessonIds.includes(String(lesson.id)) ? (
-                                <Button disabled size="sm" className="bg-green-600 text-white hover:bg-green-600">
-                                  Lesson Completed
-                                </Button>
-                              ) : (
-                                <>
-                                  <Button
-                                    size="sm"
-                                    className="bg-[#1E3A8A] hover:bg-[#1E3A8A]/90 text-white"
-                                    onClick={() => handleCompleteLesson(String(lesson.id))}
-                                  >
-                                    Mark as Complete
-                                  </Button>
-                                  {autoMarkCountdown[String(lesson.id)] && autoMarkCountdown[String(lesson.id)] > 0 && (
-                                    <p className="text-xs text-gray-600">
-                                      Auto-marking in {autoMarkCountdown[String(lesson.id)]}s...
-                                    </p>
-                                  )}
-                                </>
-                              )}
+                                <p className="text-xs text-green-700 font-medium">Completed and counted in progress.</p>
+                              ) : null}
                             </div>
                           ) : null}
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </CardContent>
@@ -870,6 +892,16 @@ export function CourseDetails({ id }: CourseDetailsProps) {
                                 <p className="text-xs text-gray-500 mt-2">
                                   Due: {new Date(ass.dueDate).toLocaleDateString()} • Max Points: {ass.maxPoints}
                                 </p>
+                                {typeof ass.url === 'string' && ass.url.trim() ? (
+                                  <a
+                                    href={ass.url.trim()}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-xs text-[#1E3A8A] font-medium underline mt-1 inline-block"
+                                  >
+                                    Teacher resource link
+                                  </a>
+                                ) : null}
                               </div>
                               {isSubmitted && (
                                 <Badge className={isGraded ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}>
@@ -877,6 +909,16 @@ export function CourseDetails({ id }: CourseDetailsProps) {
                                 </Badge>
                               )}
                             </div>
+                            {normalizeFileAssets(ass.attachments).length > 0 ? (
+                              <div className="mt-3 space-y-2">
+                                <p className="text-sm font-medium text-gray-700">Assignment Resources</p>
+                                <div className="grid gap-2">
+                                  {normalizeFileAssets(ass.attachments).map((file, index) => (
+                                    <FilePreview key={`${file.url}-${index}`} file={file} />
+                                  ))}
+                                </div>
+                              </div>
+                            ) : null}
 
                             {!isSubmitted ? (
                               <div className="mt-4 space-y-3">
@@ -886,8 +928,8 @@ export function CourseDetails({ id }: CourseDetailsProps) {
                                   onChange={(e) => setSubmissionDraft(ass._id, 'content', e.target.value)}
                                 />
                                 <FileOrUrlInput
-                                  label="Attach your work"
-                                  accept=".pdf,.doc,.docx,.txt"
+                                  label="Attach your work (PDF, Word, PowerPoint — uploads go to local /uploads when configured)"
+                                  accept={ASSIGNMENT_SUBMIT_ACCEPT}
                                   multiple={true}
                                   maxSizeMB={20}
                                   onFilesChange={(files: File[]) => setSubmissionDraft(ass._id, 'files', files)}
@@ -913,6 +955,16 @@ export function CourseDetails({ id }: CourseDetailsProps) {
                                 ) : (
                                   <p className="text-gray-600">Your submission has been recorded. Awaiting grading.</p>
                                 )}
+                                {normalizeFileAssets(submission?.attachments).length > 0 ? (
+                                  <div className="mt-3 space-y-2">
+                                    <p className="text-sm font-medium text-gray-700">Your Submitted Files</p>
+                                    <div className="grid gap-2">
+                                      {normalizeFileAssets(submission?.attachments).map((file, index) => (
+                                        <FilePreview key={`${file.url}-${index}`} file={file} />
+                                      ))}
+                                    </div>
+                                  </div>
+                                ) : null}
                               </div>
                             )}
                           </div>
@@ -1038,20 +1090,8 @@ export function CourseDetails({ id }: CourseDetailsProps) {
                           <span className="text-sm font-bold text-[#1E3A8A]">{progress}%</span>
                         </div>
                         <Progress value={progress} className="h-3 mb-4" />
-                        <div className="flex flex-wrap gap-2">
-                          {[25, 50, 75, 100].map((p) => (
-                            <Button
-                              key={p}
-                              variant={progress >= p ? 'default' : 'outline'}
-                              size="sm"
-                              disabled={updatingProgress}
-                              onClick={() => handleUpdateProgress(p)}
-                              className={progress >= p ? 'bg-green-600' : ''}
-                            >
-                              {p}%
-                            </Button>
-                          ))}
-                        </div>
+                        <p className="text-xs text-gray-600 mb-2">Progress is auto-tracked as you complete lessons.</p>
+                        {updatingProgress ? <p className="text-xs text-gray-500">Syncing lesson completion...</p> : null}
                         {progress >= 100 && (
                           <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
                             <CheckCircle className="w-6 h-6 text-green-600 mx-auto mb-2" />
@@ -1062,14 +1102,18 @@ export function CourseDetails({ id }: CourseDetailsProps) {
                       </div>
                     ) : (
                       <>
-                        <Button
-                          onClick={handleEnroll}
-                          disabled={isEnrolling}
-                          className="w-full bg-[#F59E0B] hover:bg-[#F59E0B]/90 text-white py-6 text-lg mb-4"
-                        >
-                          {isEnrolling ? 'Enrolling...' : "Enroll Now - It's Free!"}
-                        </Button>
-                        {enrollError && <p className="text-red-600 text-sm text-center mb-2">{enrollError}</p>}
+                        <EnrollButton
+                          courseId={id}
+                          disabled={enrollmentStatusLoading}
+                          courseFull={enrollmentFull}
+                          onSubmitted={refreshEnrollmentRequestStatus}
+                        />
+                        {enrollmentFull ? (
+                          <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 mb-3">
+                            Enrollment is full ({enrolledCount}/{maxEnrollmentsCap}). Check back later or contact the school.
+                          </p>
+                        ) : null}
+                        <EnrollmentStatus status={enrollmentRequestStatus} />
                       </>
                     )}
                   </>
@@ -1112,8 +1156,10 @@ export function CourseDetails({ id }: CourseDetailsProps) {
                     <Badge variant="outline">{course.level}</Badge>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-gray-600 flex items-center gap-2"><Users className="w-5 h-5" />Students</span>
-                    <span className="font-semibold">{course.students}</span>
+                    <span className="text-gray-600 flex items-center gap-2"><Users className="w-5 h-5" />Enrollment</span>
+                    <span className="font-semibold">
+                      {enrolledCount}/{maxEnrollmentsCap}
+                    </span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-gray-600 flex items-center gap-2"><BookOpen className="w-5 h-5" />Category</span>

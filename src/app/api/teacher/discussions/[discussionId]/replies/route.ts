@@ -4,6 +4,7 @@ import connectDB from '@/config/db';
 import Course from '@/models/Course';
 import Discussion from '@/models/Discussion';
 import { getEffectiveRole } from '@/lib/auth';
+import { createNotification } from '@/lib/notifications';
 
 export async function POST(
   req: Request,
@@ -66,6 +67,19 @@ export async function POST(
       },
       { new: true }
     ).lean();
+
+    await createNotification({
+      recipientId: String((discussion as any).studentId),
+      recipientRole: 'student',
+      type: 'discussion.reply',
+      title: 'New reply to your question',
+      message: `Your discussion in "${String((course as any).title || 'course')}" received a teacher reply.`,
+      entityType: 'discussion',
+      entityId: String(discussionId),
+      actionUrl: `/courses/${String((discussion as any).courseId)}`,
+      priority: 'medium',
+      metadata: { discussionId, courseId: String((discussion as any).courseId) },
+    });
 
     return NextResponse.json({ success: true, discussion: updated });
   } catch (error) {

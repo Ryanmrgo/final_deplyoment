@@ -2,6 +2,8 @@
 
 import { useAuth } from '@/app/components/AuthContext';
 import { ConfirmDialog } from '@/app/components/confirm-dialog';
+import { EnrollmentTable } from '@/app/components/EnrollmentTable';
+import { EnrollmentRequestItem } from '@/app/components/RequestCard';
 import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card';
@@ -21,6 +23,7 @@ export function AdminDashboard() {
   const [reviews, setReviews] = useState<any[]>([]);
   const [discussions, setDiscussions] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
+  const [enrollmentRequests, setEnrollmentRequests] = useState<EnrollmentRequestItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [adminMessage, setAdminMessage] = useState<string | null>(null);
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
@@ -30,6 +33,11 @@ export function AdminDashboard() {
   const [deletingDiscussionId, setDeletingDiscussionId] = useState<string | null>(null);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newCategoryIcon, setNewCategoryIcon] = useState('📚');
+  const [updatingRequestId, setUpdatingRequestId] = useState<string | null>(null);
+  const [requestStatusFilter, setRequestStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('pending');
+  const [requestPage, setRequestPage] = useState(1);
+  const [requestTotalPages, setRequestTotalPages] = useState(1);
+  const [requestsLoading, setRequestsLoading] = useState(false);
 
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean;
@@ -67,11 +75,41 @@ export function AdminDashboard() {
           setReviews(reviewsRes.items || []);
           setDiscussions(discussionsRes.items || []);
           setCategories(categoriesRes.items || []);
+          fetchEnrollmentRequests(1, 'pending');
         })
         .catch(() => {})
         .finally(() => setLoading(false));
     }
   }, [userRole, user]);
+
+  useEffect(() => {
+    if (userRole === 'admin' && user) {
+      fetchEnrollmentRequests(requestPage, requestStatusFilter);
+    }
+  }, [userRole, user, requestPage, requestStatusFilter]);
+
+  const fetchEnrollmentRequests = async (page: number, status: 'all' | 'pending' | 'approved' | 'rejected') => {
+    setRequestsLoading(true);
+    try {
+      const qs = new URLSearchParams({
+        page: String(page),
+        limit: '10',
+        status,
+      });
+      const res = await fetch(`/api/admin/enrollment-requests?${qs.toString()}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to load requests');
+      setEnrollmentRequests(data.items || []);
+      setRequestTotalPages(Math.max(1, Number(data?.meta?.totalPages || 1)));
+      setAdminMessage(null);
+    } catch {
+      setEnrollmentRequests([]);
+      setRequestTotalPages(1);
+      setAdminMessage('Failed to load enrollment requests. Please refresh.');
+    } finally {
+      setRequestsLoading(false);
+    }
+  };
 
   const handleUpdateUserRole = async (targetUserId: string, role: 'student' | 'teacher' | 'admin') => {
     const previousUsers = users;
@@ -251,6 +289,33 @@ export function AdminDashboard() {
     }
   };
 
+  const handleUpdateEnrollmentRequestStatus = async (requestId: string, status: 'approved' | 'rejected') => {
+    const previousItems = enrollmentRequests;
+    setEnrollmentRequests((prev) => prev.map((item) => (item.id === requestId ? { ...item, status } : item)));
+    setUpdatingRequestId(requestId);
+    setAdminMessage(null);
+    const toastId = toast.loading(`${status === 'approved' ? 'Approving' : 'Rejecting'} request...`);
+    try {
+      const res = await fetch(`/api/admin/enrollment-requests/${requestId}/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to update request');
+
+      setAdminMessage(`Enrollment request ${status}.`);
+      toast.success(`Request ${status}.`, { id: toastId });
+    } catch (error: any) {
+      setEnrollmentRequests(previousItems);
+      setAdminMessage(error?.message || 'Failed to update request.');
+      toast.error(error?.message || 'Failed to update request.', { id: toastId });
+    } finally {
+      setUpdatingRequestId(null);
+      fetchEnrollmentRequests(requestPage, requestStatusFilter);
+    }
+  };
+
   if (isLoading || !user || userRole !== 'admin') {
     return (
       <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center">
@@ -321,7 +386,7 @@ export function AdminDashboard() {
         </div>
 
         <Tabs defaultValue="users" className="space-y-6">
-          <TabsList className="bg-white p-1">
+          <TabsList className="bg-white p-1 h-auto flex flex-wrap justify-start gap-1">
             <TabsTrigger value="users" className="data-[state=active]:bg-[#1E3A8A] data-[state=active]:text-white">
               Users Management
             </TabsTrigger>
@@ -336,6 +401,9 @@ export function AdminDashboard() {
             </TabsTrigger>
             <TabsTrigger value="categories" className="data-[state=active]:bg-[#1E3A8A] data-[state=active]:text-white">
               Categories
+            </TabsTrigger>
+            <TabsTrigger value="enrollments" className="data-[state=active]:bg-[#1E3A8A] data-[state=active]:text-white">
+              Enrollment Requests
             </TabsTrigger>
           </TabsList>
 
@@ -598,6 +666,63 @@ export function AdminDashboard() {
                     ))}
                   </div>
                 )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+          <TabsContent value="enrollments">
+            <Card className="bg-white">
+              <CardHeader>
+                <CardTitle className="text-2xl text-gray-900">Enrollment Requests</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="text-sm text-gray-700">Filter:</label>
+                  <select
+                    className="rounded-md border border-gray-300 px-2 py-1 text-sm"
+                    value={requestStatusFilter}
+                    onChange={(e) => {
+                      setRequestStatusFilter(e.target.value as 'all' | 'pending' | 'approved' | 'rejected');
+                      setRequestPage(1);
+                    }}
+                  >
+                    <option value="all">All</option>
+                    <option value="pending">Pending</option>
+                    <option value="approved">Approved</option>
+                    <option value="rejected">Rejected</option>
+                  </select>
+                </div>
+                {requestsLoading ? (
+                  <p className="text-sm text-gray-600">Loading enrollment requests...</p>
+                ) : null}
+                <EnrollmentTable
+                  items={enrollmentRequests}
+                  updatingId={updatingRequestId}
+                  onApprove={(id) => handleUpdateEnrollmentRequestStatus(id, 'approved')}
+                  onReject={(id) => handleUpdateEnrollmentRequestStatus(id, 'rejected')}
+                />
+                <div className="flex items-center justify-between pt-2">
+                  <p className="text-xs text-gray-500">
+                    Page {requestPage} of {requestTotalPages}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={requestPage <= 1 || requestsLoading}
+                      onClick={() => setRequestPage((prev) => Math.max(1, prev - 1))}
+                    >
+                      Previous
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={requestPage >= requestTotalPages || requestsLoading}
+                      onClick={() => setRequestPage((prev) => Math.min(requestTotalPages, prev + 1))}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>

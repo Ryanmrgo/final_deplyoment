@@ -1,5 +1,6 @@
 import connectDB from '@/config/db';
 import { getEffectiveRole } from '@/lib/auth';
+import { normalizeFileAssets } from '@/lib/fileAsset';
 import Assignment from '@/models/Assignment';
 import Enrollment from '@/models/Enrollment';
 import mongoose from 'mongoose';
@@ -39,5 +40,10 @@ export async function GET(req: Request) {
     .sort({ dueDate: 1 })
     .lean();
 
-  return NextResponse.json({ items: assignments });
+  return NextResponse.json({
+    items: assignments.map((item: any) => ({
+      ...item,
+      attachments: normalizeFileAssets(item.attachments),
+    })),
+  });
 }

@@ -1,5 +1,7 @@
 import connectDB from '@/config/db';
 import { getEffectiveRole } from '@/lib/auth';
+import { createNotificationsBulk } from '@/lib/notifications';
+import Enrollment from '@/models/Enrollment';
 import Quiz from '@/models/Quiz';
 import { NextResponse } from 'next/server';
 
@@ -79,6 +81,27 @@ export async function PATCH(
     quiz.updatedAt = new Date();
 
     await quiz.save();
+
+    if (!wasPublished && quiz.isPublished) {
+      const enrolled = await Enrollment.find({ courseId: quiz.courseId }).select('studentId').lean();
+      if (enrolled.length > 0) {
+        await createNotificationsBulk(
+          enrolled.map((item: any) => ({
+            recipientId: String(item.studentId),
+            recipientRole: 'student' as const,
+            type: 'quiz.published' as const,
+            title: 'Quiz is now available',
+            message: `Quiz "${String(quiz.title || 'quiz')}" has been published.`,
+            entityType: 'quiz' as const,
+            entityId: String(quiz._id),
+            actionUrl: `/courses/${String(quiz.courseId)}`,
+            priority: 'medium' as const,
+            metadata: { courseId: String(quiz.courseId), quizId: String(quiz._id) },
+          }))
+        );
+      }
+    }
+
     return NextResponse.json({ success: true, quiz });
   } catch (error) {
     console.error('Error updating quiz:', error);

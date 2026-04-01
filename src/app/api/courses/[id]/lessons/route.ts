@@ -40,17 +40,46 @@ export async function GET(
       .sort({ order: 1 })
       .lean();
 
-    const items = lessons.map((l: any) => ({
-      id: l._id,
-      title: l.title,
-      sectionTitle: l.sectionTitle,
-      description: l.description,
-      type: l.type,
-      content: l.content,
-      fileUrl: l.fileUrl,
-      order: l.order,
-      duration: l.duration,
-    }));
+    const items = lessons.map((l: any) => {
+      const derivedVideo =
+        l.video?.url
+          ? l.video
+          : l.youtubeUrl
+            ? { type: 'youtube', url: l.youtubeUrl }
+            : l.fileUrl && (l.contentType === 'video' || l.type === 'video')
+              ? { type: 'upload', url: l.fileUrl }
+              : null;
+
+      const derivedFiles =
+        Array.isArray(l.files) && l.files.length
+          ? l.files
+          : l.fileUrl && !derivedVideo
+            ? [
+                {
+                  fileName: `Lesson file.${l.fileType || 'file'}`,
+                  fileUrl: l.fileUrl,
+                  fileType: l.fileType || 'file',
+                },
+              ]
+            : [];
+
+      return {
+        id: l._id?.toString?.() ?? l._id,
+        title: l.title,
+        sectionTitle: l.sectionTitle,
+        description: l.description,
+        type: l.type,
+        content: l.content,
+        contentType: l.contentType,
+        fileUrl: l.fileUrl,
+        fileType: l.fileType,
+        youtubeUrl: l.youtubeUrl,
+        video: derivedVideo,
+        files: derivedFiles,
+        order: l.order,
+        duration: l.duration,
+      };
+    });
 
     return NextResponse.json({ items });
   } catch (error) {

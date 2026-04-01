@@ -5,6 +5,7 @@ import User from '@/models/User';
 import Enrollment from '@/models/Enrollment';
 import mongoose from 'mongoose';
 import { auth } from '@clerk/nextjs/server';
+import { getCourseMaxEnrollments } from '@/lib/enrollmentCap';
 
 // Public route - fetch single course by ID
 export async function GET(
@@ -49,6 +50,7 @@ export async function GET(
     let isEnrolled = false;
     let enrollmentId = null;
     let enrollmentProgress = 0;
+    let completedLessonIds: string[] = [];
     if (userId) {
       const enrollment = await Enrollment.findOne({
         studentId: userId,
@@ -58,6 +60,9 @@ export async function GET(
         isEnrolled = true;
         enrollmentId = (enrollment as any)._id?.toString();
         enrollmentProgress = (enrollment as any).progress ?? 0;
+        completedLessonIds = Array.isArray((enrollment as any).completedLessonIds)
+          ? (enrollment as any).completedLessonIds.map((value: unknown) => String(value))
+          : [];
       }
     }
 
@@ -68,6 +73,13 @@ export async function GET(
     const reviewUserMap = Object.fromEntries(reviewUsers.map((u: any) => [String(u._id), String(u.name || 'Student')]));
 
     const myReview = (course.reviews || []).find((r: any) => r.studentId === userId);
+
+    const courseObjectId = new mongoose.Types.ObjectId(id);
+    const enrolledCount = await Enrollment.countDocuments({
+      courseId: courseObjectId,
+      status: 'Active',
+    });
+    const maxEnrollments = getCourseMaxEnrollments(course as any);
 
     const result = {
       id: course._id.toString(),
@@ -83,6 +95,8 @@ export async function GET(
       rating: course.rating || 0,
       reviewCount: course.reviews?.length || 0,
       students: course.totalStudents || 0,
+      enrolledCount,
+      maxEnrollments,
       level: course.level || 'Beginner',
       duration: course.duration ? `${course.duration}h` : '0h',
       durationHours: course.duration || 0,
@@ -113,6 +127,7 @@ export async function GET(
       isEnrolled,
       enrollmentId,
       enrollmentProgress,
+      completedLessonIds,
       isInstructor,
     };
 

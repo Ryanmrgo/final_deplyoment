@@ -3,7 +3,8 @@ import connectDB from '@/config/db';
 import Course from '@/models/Course';
 import { getEffectiveRole } from '@/lib/auth';
 import { uploadToCloudinary } from '@/lib/cloudinary';
-import { v2 as cloudinary } from 'cloudinary';
+import { saveFileLocally } from '@/lib/localUpload';
+import { useCloudinaryForStorage } from '@/lib/uploadStrategy';
 
 export async function GET() {
   const { userId, role } = await getEffectiveRole();
@@ -102,16 +103,11 @@ export async function POST(req: Request) {
 
   try {
     await connectDB();
-    const uploadsEnabled = Boolean(
-      process.env.CLOUDINARY_CLOUD_NAME &&
-      process.env.CLOUDINARY_API_KEY &&
-      process.env.CLOUDINARY_API_SECRET
-    );
     let syllabusUpload: { url: string; name: string; type: string } | null = null;
     let thumbnailUpload: { url: string; name: string; type: string } | null = null;
     let syllabusMaterials: { label: string; url: string; name: string; type: string }[] = [];
 
-    if (uploadsEnabled && syllabusFiles.length > 0) {
+    if (syllabusFiles.length > 0) {
       syllabusMaterials = await Promise.all(
         syllabusFiles.map(async (file, index) => {
           validateUpload(file, {
@@ -119,10 +115,12 @@ export async function POST(req: Request) {
             allowedMimes: SYLLABUS_MIME_TYPES,
             allowedExtensions: SYLLABUS_EXTENSIONS,
           });
-          const upload = await uploadToCloudinary(file, {
-            folder: 'course-syllabi',
-            resourceType: 'raw',
-          });
+          const upload = useCloudinaryForStorage()
+            ? await uploadToCloudinary(file, {
+                folder: 'course-syllabi',
+                resourceType: 'raw',
+              })
+            : await saveFileLocally(file, 'course-syllabi');
           const label = syllabusLabels[index]?.trim() || `Label ${index + 1}`;
           return {
             label,
@@ -134,28 +132,32 @@ export async function POST(req: Request) {
       );
     }
 
-    if (uploadsEnabled && syllabusMaterials.length === 0 && syllabusFile) {
+    if (syllabusMaterials.length === 0 && syllabusFile) {
       validateUpload(syllabusFile, {
         maxBytes: MAX_SYLLABUS_BYTES,
         allowedMimes: SYLLABUS_MIME_TYPES,
         allowedExtensions: SYLLABUS_EXTENSIONS,
       });
-      syllabusUpload = await uploadToCloudinary(syllabusFile, {
-        folder: 'course-syllabi',
-        resourceType: 'raw',
-      });
+      syllabusUpload = useCloudinaryForStorage()
+        ? await uploadToCloudinary(syllabusFile, {
+            folder: 'course-syllabi',
+            resourceType: 'raw',
+          })
+        : await saveFileLocally(syllabusFile, 'course-syllabi');
     }
 
-    if (uploadsEnabled && thumbnailFile) {
+    if (thumbnailFile) {
       validateUpload(thumbnailFile, {
         maxBytes: MAX_THUMBNAIL_BYTES,
         allowedMimes: THUMBNAIL_MIME_TYPES,
         allowedExtensions: THUMBNAIL_EXTENSIONS,
       });
-      thumbnailUpload = await uploadToCloudinary(thumbnailFile, {
-        folder: 'course-thumbnails',
-        resourceType: 'image',
-      });
+      thumbnailUpload = useCloudinaryForStorage()
+        ? await uploadToCloudinary(thumbnailFile, {
+            folder: 'course-thumbnails',
+            resourceType: 'image',
+          })
+        : await saveFileLocally(thumbnailFile, 'course-thumbnails');
     }
 
     // Syllabus file is optional. Teachers can add lesson materials after course creation.

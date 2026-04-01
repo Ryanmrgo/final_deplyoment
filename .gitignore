@@ -25,5 +25,8 @@ Thumbs.db
 # Misc
 *.log
 
+# Local uploaded files (when USE_LOCAL_UPLOADS=true)
+public/uploads/
+
 # clerk configuration (can include secrets)
 /.clerk/

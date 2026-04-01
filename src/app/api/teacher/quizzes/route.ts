@@ -2,8 +2,10 @@ import { NextResponse } from 'next/server';
 import connectDB from '@/config/db';
 import Quiz from '@/models/Quiz';
 import Course from '@/models/Course';
+import Enrollment from '@/models/Enrollment';
 import mongoose from 'mongoose';
 import { getEffectiveRole } from '@/lib/auth';
+import { createNotificationsBulk } from '@/lib/notifications';
 
 export async function GET(req: Request) {
   const { userId, role } = await getEffectiveRole();
@@ -81,6 +83,27 @@ export async function POST(req: Request) {
       isPublished: Boolean(body.isPublished),
     });
     await quiz.save();
+
+    if (quiz.isPublished) {
+      const enrolled = await Enrollment.find({ courseId: course._id }).select('studentId').lean();
+      if (enrolled.length > 0) {
+        await createNotificationsBulk(
+          enrolled.map((item: any) => ({
+            recipientId: String(item.studentId),
+            recipientRole: 'student' as const,
+            type: 'quiz.published' as const,
+            title: 'New quiz published',
+            message: `A new quiz "${String(quiz.title || 'quiz')}" is available in your course.`,
+            entityType: 'quiz' as const,
+            entityId: String(quiz._id),
+            actionUrl: `/courses/${String(quiz.courseId)}`,
+            priority: 'medium' as const,
+            metadata: { courseId: String(quiz.courseId), quizId: String(quiz._id) },
+          }))
+        );
+      }
+    }
+
     return NextResponse.json({ success: true, quiz });
   } catch (error) {
     console.error('Error creating quiz:', error);

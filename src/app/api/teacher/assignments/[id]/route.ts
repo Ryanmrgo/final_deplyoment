@@ -2,7 +2,11 @@ import connectDB from '@/config/db';
 import { getEffectiveRole } from '@/lib/auth';
 import { uploadToCloudinary } from '@/lib/cloudinary';
 import { saveFileLocally } from '@/lib/localUpload';
+import { useCloudinaryForStorage } from '@/lib/uploadStrategy';
+import { normalizeFileAsset, normalizeFileAssets } from '@/lib/fileAsset';
+import { createNotificationsBulk } from '@/lib/notifications';
 import Assignment from '@/models/Assignment';
+import Enrollment from '@/models/Enrollment';
 import { NextResponse } from 'next/server';
 
 export async function PATCH(
@@ -40,9 +44,7 @@ export async function PATCH(
     await connectDB();
 
     // Handle file uploads
-    const uploadedFiles: string[] = Array.isArray(body.attachments)
-      ? body.attachments.map((item: unknown) => String(item || '').trim()).filter(Boolean)
-      : [];
+    const uploadedFiles = normalizeFileAssets(body.attachments);
 
     if (uploadedFiles.length === 0 && files.length > 0) {
       for (const file of files) {
@@ -50,10 +52,17 @@ export async function PATCH(
           return NextResponse.json({ error: 'File size exceeds 20MB limit' }, { status: 400 });
         }
         try {
-          const uploadResult = process.env.CLOUDINARY_CLOUD_NAME ?
-            await uploadToCloudinary(file, { folder: 'assignments', resourceType: 'raw' }) :
-            await saveFileLocally(file);
-          uploadedFiles.push(uploadResult.url);
+          const uploadResult = useCloudinaryForStorage()
+            ? await uploadToCloudinary(file, { folder: 'assignments', resourceType: 'raw' })
+            : await saveFileLocally(file, 'assignments');
+          const normalized = normalizeFileAsset({
+            url: uploadResult.url,
+            name: uploadResult.name || file.name,
+            mimeType: file.type || uploadResult.type || '',
+            extension: String(file.name.split('.').pop() || '').toLowerCase(),
+            size: file.size,
+          });
+          if (normalized) uploadedFiles.push(normalized);
         } catch (uploadError) {
           console.error('File upload error:', uploadError);
           return NextResponse.json({ error: 'Failed to upload file' }, { status: 500 });
@@ -73,6 +82,8 @@ export async function PATCH(
     }
     if (url) {
       update.url = url;
+    } else if (body.url !== undefined) {
+      update.url = typeof body.url === 'string' ? body.url.trim() : '';
     }
 
     const assignment = await Assignment.findOneAndUpdate(
@@ -83,7 +94,41 @@ export async function PATCH(
     if (!assignment) {
       return NextResponse.json({ error: 'Assignment not found' }, { status: 404 });
     }
-    return NextResponse.json({ success: true, assignment });
+
+    const publishFlagProvided = body.isPublished !== undefined;
+    const isNowPublished = Boolean((assignment as any).isPublished);
+    if (publishFlagProvided && isNowPublished) {
+      const enrolled = await Enrollment.find({ courseId: (assignment as any).courseId })
+        .select('studentId')
+        .lean();
+      if (enrolled.length > 0) {
+        await createNotificationsBulk(
+          enrolled.map((item: any) => ({
+            recipientId: String(item.studentId),
+            recipientRole: 'student' as const,
+            type: 'assignment.published' as const,
+            title: 'New assignment published',
+            message: `A new assignment "${String((assignment as any).title || 'assignment')}" is now available.`,
+            entityType: 'assignment' as const,
+            entityId: String((assignment as any)._id),
+            actionUrl: `/courses/${String((assignment as any).courseId)}`,
+            priority: 'medium' as const,
+            metadata: {
+              assignmentId: String((assignment as any)._id),
+              courseId: String((assignment as any).courseId),
+            },
+          }))
+        );
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      assignment: {
+        ...(assignment as any).toObject(),
+        attachments: normalizeFileAssets((assignment as any).attachments),
+      },
+    });
   } catch (error) {
     console.error('Error updating assignment:', error);
     return NextResponse.json({ error: 'Failed to update assignment' }, { status: 500 });

@@ -2,6 +2,8 @@ import connectDB from '@/config/db';
 import { getEffectiveRole } from '@/lib/auth';
 import { uploadToCloudinary } from '@/lib/cloudinary';
 import { saveFileLocally } from '@/lib/localUpload';
+import { useCloudinaryForStorage } from '@/lib/uploadStrategy';
+import { normalizeFileAsset, normalizeFileAssets } from '@/lib/fileAsset';
 import Assignment from '@/models/Assignment';
 import mongoose from 'mongoose';
 import { NextResponse } from 'next/server';
@@ -27,8 +29,12 @@ export async function GET(req: Request) {
       query.courseId = new mongoose.Types.ObjectId(courseId);
     }
 
-    const assignments = await Assignment.find(query).sort({ createdAt: -1 });
-    return NextResponse.json({ items: assignments });
+    const assignments = await Assignment.find(query).sort({ createdAt: -1 }).lean();
+    const items = assignments.map((item: any) => ({
+      ...item,
+      attachments: normalizeFileAssets(item.attachments),
+    }));
+    return NextResponse.json({ items });
   } catch (error) {
     console.error('Error fetching assignments:', error);
     return NextResponse.json({ error: 'Failed to fetch assignments' }, { status: 500 });
@@ -74,9 +80,7 @@ export async function POST(req: Request) {
     await connectDB();
 
     // Handle file uploads
-    const uploadedFiles: string[] = Array.isArray(body.attachments)
-      ? body.attachments.map((item: unknown) => String(item || '').trim()).filter(Boolean)
-      : [];
+    const uploadedFiles = normalizeFileAssets(body.attachments);
 
     if (uploadedFiles.length === 0 && files.length > 0) {
       for (const file of files) {
@@ -84,10 +88,17 @@ export async function POST(req: Request) {
           return NextResponse.json({ error: 'File size exceeds 20MB limit' }, { status: 400 });
         }
         try {
-          const uploadResult = process.env.CLOUDINARY_CLOUD_NAME ?
-            await uploadToCloudinary(file, { folder: 'assignments', resourceType: 'raw' }) :
-            await saveFileLocally(file);
-          uploadedFiles.push(uploadResult.url);
+          const uploadResult = useCloudinaryForStorage()
+            ? await uploadToCloudinary(file, { folder: 'assignments', resourceType: 'raw' })
+            : await saveFileLocally(file, 'assignments');
+          const normalized = normalizeFileAsset({
+            url: uploadResult.url,
+            name: uploadResult.name || file.name,
+            mimeType: file.type || uploadResult.type || '',
+            extension: String(file.name.split('.').pop() || '').toLowerCase(),
+            size: file.size,
+          });
+          if (normalized) uploadedFiles.push(normalized);
         } catch (uploadError) {
           console.error('File upload error:', uploadError);
           return NextResponse.json({ error: 'Failed to upload file' }, { status: 500 });
@@ -105,7 +116,10 @@ export async function POST(req: Request) {
       instructions: body.instructions || '',
       isPublished: false,
       attachments: uploadedFiles,
-      url: url || undefined,
+      url:
+        (url ||
+          (typeof body.url === 'string' ? String(body.url).trim() : '')) ||
+        undefined,
       allowLateSubmission: body.allowLateSubmission === 'true' || body.allowLateSubmission === true,
     });
     await assignment.save();

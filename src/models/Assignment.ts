@@ -9,7 +9,7 @@ const assignmentSchema = new mongoose.Schema(
     dueDate: { type: Date, required: true },
     maxPoints: { type: Number, default: 100 },
     instructions: { type: String, default: '' },
-    attachments: [{ type: String }], // URLs to attached files
+    attachments: [{ type: mongoose.Schema.Types.Mixed }], // FileAsset[] (backward compatible with string URLs)
     url: { type: String, default: '' }, // Optional URL for assignment resources
     isPublished: { type: Boolean, default: false },
     allowLateSubmission: { type: Boolean, default: true },

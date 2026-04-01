@@ -5,6 +5,8 @@ import Course from '@/models/Course';
 import Lesson from '@/models/Lesson';
 import { getEffectiveRole } from '@/lib/auth';
 import { uploadToCloudinary } from '@/lib/cloudinary';
+import { saveFileLocally } from '@/lib/localUpload';
+import { useCloudinaryForStorage } from '@/lib/uploadStrategy';
 import { LESSON_MAX_UPLOAD_MB, MAX_LESSON_UPLOAD_BYTES } from '@/lib/lesson';
 
 const isLessonType = (value: string) => ['video', 'pdf', 'ppt', 'text'].includes(value);
@@ -106,18 +108,14 @@ export async function POST(
     let fileUrl = fileUrlFromBody;
     let type = requestedType;
 
-    const uploadsEnabled = Boolean(
-      process.env.CLOUDINARY_CLOUD_NAME &&
-        process.env.CLOUDINARY_API_KEY &&
-        process.env.CLOUDINARY_API_SECRET
-    );
-
-    if (lessonFile && uploadsEnabled) {
+    if (lessonFile) {
       validateLessonFile(lessonFile);
-      const upload = await uploadToCloudinary(lessonFile, {
-        folder: 'course-lessons',
-        resourceType: 'raw',
-      });
+      const upload = useCloudinaryForStorage()
+        ? await uploadToCloudinary(lessonFile, {
+            folder: 'course-lessons',
+            resourceType: 'raw',
+          })
+        : await saveFileLocally(lessonFile, 'course-lessons');
       fileUrl = upload.url;
 
       // For uploaded docs, coerce to a document type understood by Lesson.type

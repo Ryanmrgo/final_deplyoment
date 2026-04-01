@@ -6,7 +6,7 @@ import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
 import { Textarea } from '@/app/components/ui/textarea';
 import { FileUploader } from '@/app/components/FileUploader';
-import { uploadFileToCloudinary } from '@/lib/cloudinaryClient';
+import { uploadUserFile } from '@/lib/clientUpload';
 
 type LessonUploadFormProps = {
   courseId: string;
@@ -65,17 +65,14 @@ export function LessonUploadForm({ courseId, onCreated }: LessonUploadFormProps)
         payload.youtubeUrl = youtubeUrl.trim();
       } else if (file) {
         if (contentType === 'video') {
-          const uploaded = await uploadFileToCloudinary(file, {
+          const uploaded = await uploadUserFile(file, {
             folder: 'course-lessons',
             resourceType: 'video',
           });
           payload.videoType = 'upload';
           payload.videoUrl = uploaded.url;
         } else {
-          const uploaded = await uploadFileToCloudinary(file, {
-            folder: 'course-lessons',
-            resourceType: 'raw',
-          });
+          const uploaded = await uploadUserFile(file, 'course-lessons');
           lessonFiles.push({
             fileName: uploaded.name,
             fileUrl: uploaded.url,
@@ -85,10 +82,7 @@ export function LessonUploadForm({ courseId, onCreated }: LessonUploadFormProps)
       }
 
       if ((contentType === 'video' || contentType === 'youtube') && supportingFile) {
-        const uploadedSupport = await uploadFileToCloudinary(supportingFile, {
-          folder: 'course-lessons',
-          resourceType: 'raw',
-        });
+        const uploadedSupport = await uploadUserFile(supportingFile, 'course-lessons');
         lessonFiles.push({
           fileName: uploadedSupport.name,
           fileUrl: uploadedSupport.url,

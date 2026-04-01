@@ -1,18 +1,18 @@
-import { auth } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
 import connectDB from '@/config/db';
 import Quiz from '@/models/Quiz';
 import QuizAttempt from '@/models/QuizAttempt';
 import Enrollment from '@/models/Enrollment';
 import mongoose from 'mongoose';
+import { getEffectiveRole } from '@/lib/auth';
+import { createNotification } from '@/lib/notifications';
 
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { userId, sessionClaims } = await auth();
+  const { userId, role } = await getEffectiveRole();
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  const role = (sessionClaims?.publicMetadata as any)?.role;
   if (role !== 'student') return NextResponse.json({ error: 'Student required' }, { status: 403 });
 
   try {
@@ -37,12 +37,17 @@ export async function POST(
 
     let totalEarned = 0;
     const evaluatedAnswers = questions.map((q: any, idx: number) => {
-      const userAnswer = String(answerMap[idx] ?? '').trim().toLowerCase();
-      const correctAnswer = String(q.correctAnswer ?? '').trim().toLowerCase();
+      const userAnswerRaw = String(answerMap[idx] ?? '').trim();
+      const userAnswer = userAnswerRaw.toLowerCase();
+      const correctAnswerRaw = String(q.correctAnswer ?? '').trim();
+      const correctAnswer = correctAnswerRaw.toLowerCase();
       const points = q.points ?? 1;
       let isCorrect = false;
       if (q.type === 'multiple-choice') {
-        isCorrect = userAnswer === correctAnswer || userAnswer === String(q.options?.indexOf?.(q.correctAnswer) ?? -1);
+        const optionIndex = Array.isArray(q.options)
+          ? q.options.findIndex((option: string) => String(option).trim().toLowerCase() === correctAnswer)
+          : -1;
+        isCorrect = userAnswer === correctAnswer || userAnswer === String(optionIndex);
       } else {
         isCorrect = userAnswer === correctAnswer;
       }
@@ -51,7 +56,7 @@ export async function POST(
       }
       const earned = isCorrect ? points : 0;
       totalEarned += earned;
-      return { questionIndex: idx, answer: userAnswer, isCorrect, pointsEarned: earned };
+      return { questionIndex: idx, answer: userAnswerRaw, isCorrect, pointsEarned: earned };
     });
 
     const totalPoints = questions.reduce((s: number, q: any) => s + (q.points ?? 1), 0);
@@ -79,15 +84,60 @@ export async function POST(
     });
     await attempt.save();
 
+    const remainingAttempts = Math.max(0, maxAttempts - (attemptCount + 1));
+
+    try {
+      await createNotification({
+        recipientId: String((quiz as any).instructorId),
+        recipientRole: 'teacher',
+        type: 'quiz.submitted',
+        title: 'New quiz submission',
+        message: `A student submitted "${String((quiz as any).title || 'quiz')}".`,
+        entityType: 'quiz',
+        entityId: String((quiz as any)._id),
+        actionUrl: `/dashboard/teacher/course/${String((quiz as any).courseId)}#quizzes`,
+        priority: 'medium',
+        metadata: {
+          quizId: String((quiz as any)._id),
+          attemptId: String(attempt._id),
+          studentId: userId,
+        },
+      });
+
+      await createNotification({
+        recipientId: userId,
+        recipientRole: 'student',
+        type: 'quiz.submitted',
+        title: 'Quiz submitted successfully',
+        message: `Your attempt for "${String((quiz as any).title || 'quiz')}" has been recorded.`,
+        entityType: 'quiz',
+        entityId: String((quiz as any)._id),
+        actionUrl: `/courses/${String((quiz as any).courseId)}`,
+        priority: 'low',
+        metadata: {
+          quizId: String((quiz as any)._id),
+          attemptId: String(attempt._id),
+          score: totalEarned,
+          maxScore: totalPoints,
+        },
+      });
+    } catch (notificationError) {
+      console.error('Quiz notification error:', notificationError);
+    }
+
     return NextResponse.json({
       success: true,
       attempt: {
+        attemptId: String(attempt._id),
+        attemptNumber: attemptCount + 1,
         score: totalEarned,
         maxScore: totalPoints,
         percentage,
         passed,
         answers: evaluatedAnswers,
       },
+      maxAttempts,
+      remainingAttempts,
     });
   } catch (error) {
     console.error(error);

@@ -1,7 +1,17 @@
 import { NextResponse } from 'next/server';
 import connectDB from '@/config/db';
 import Category from '@/models/Category';
+import Course from '@/models/Course';
 import { getEffectiveRole } from '@/lib/auth';
+
+const DEFAULT_CATEGORIES: Array<{ name: string; icon: string }> = [
+  { name: 'Web Development', icon: '💻' },
+  { name: 'Data Science', icon: '📊' },
+  { name: 'Mobile Development', icon: '📱' },
+  { name: 'UI/UX Design', icon: '🎨' },
+  { name: 'Business', icon: '💼' },
+  { name: 'Languages', icon: '🌍' },
+];
 
 export async function GET() {
   const { userId, role } = await getEffectiveRole();
@@ -10,7 +20,49 @@ export async function GET() {
 
   try {
     await connectDB();
-    const items = await Category.find().sort({ createdAt: -1 }).lean();
+
+    let items = await Category.find().sort({ createdAt: -1 }).lean();
+
+    // Keep category management usable even if Category collection is empty:
+    // 1) pull distinct categories currently used by courses,
+    // 2) if still empty, seed sensible defaults once.
+    if (!items.length) {
+      const distinctCourseCategories = await Course.distinct('category', { category: { $exists: true, $ne: '' } });
+      const normalizedCourseCategories = distinctCourseCategories
+        .map((value: unknown) => String(value || '').trim())
+        .filter(Boolean);
+
+      if (normalizedCourseCategories.length > 0) {
+        for (const categoryName of normalizedCourseCategories) {
+          const exists = await Category.findOne({ name: new RegExp(`^${categoryName}$`, 'i') }).lean();
+          if (!exists) {
+            await Category.create({
+              name: categoryName,
+              icon: '📚',
+              isActive: true,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            });
+          }
+        }
+      } else {
+        for (const entry of DEFAULT_CATEGORIES) {
+          const exists = await Category.findOne({ name: new RegExp(`^${entry.name}$`, 'i') }).lean();
+          if (!exists) {
+            await Category.create({
+              name: entry.name,
+              icon: entry.icon,
+              isActive: true,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            });
+          }
+        }
+      }
+
+      items = await Category.find().sort({ createdAt: -1 }).lean();
+    }
+
     return NextResponse.json({ items });
   } catch (error) {
     console.error('Error fetching categories:', error);
