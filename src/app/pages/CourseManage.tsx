@@ -2103,7 +2103,7 @@ export function CourseManage({ courseId }: CourseManageProps) {
                               ? 'Paste a public video URL (YouTube, Vimeo, etc.) and click Browse to preview it.'
                               : 'Paste a public PDF/PPT link and click Browse to verify the file opens.'}
                           </p>
-                          {lessonType !== 'text' ? (
+                          {(lessonType as string) !== 'text' ? (
                             <div className="mt-3 space-y-2">
                               <Label>Or upload a file</Label>
                               <FileUploader
