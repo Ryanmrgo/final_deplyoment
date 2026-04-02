@@ -67,6 +67,8 @@ export async function PATCH(
       return NextResponse.json({ error: 'Quiz not found' }, { status: 404 });
     }
 
+    const wasPublished = quiz.isPublished;
+
     if (body.title !== undefined) quiz.title = String(body.title || '');
     if (body.description !== undefined) quiz.description = String(body.description || '');
     if (body.questions !== undefined) quiz.questions = Array.isArray(body.questions) ? body.questions : [];

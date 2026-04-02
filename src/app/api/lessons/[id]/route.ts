@@ -27,7 +27,7 @@ const uploadLessonFile = async (file: File) => {
   if (canUseCloudinary()) {
     return uploadToCloudinary(file, {
       folder: 'course-lessons',
-      resourceType: file.type.startsWith('video/') ? 'image' : 'raw',
+      resourceType: file.type.startsWith('video/') ? 'video' : 'raw',
     });
   }
   return saveFileLocally(file);
