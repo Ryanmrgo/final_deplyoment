@@ -640,17 +640,28 @@ export function CourseDetails({ id }: CourseDetailsProps) {
                     <div className="mt-4 space-y-2">
                       <p className="text-sm font-medium text-gray-900">{hasSyllabusFile ? 'More Materials' : 'Materials'}</p>
                       <div className="space-y-2">
-                        {syllabusMaterials.map((material: any, index: number) => (
-                          <a
-                            key={`${material.url || ''}-${index}`}
-                            href={material.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="block rounded border px-3 py-2 text-sm text-[#1E3A8A] hover:bg-blue-50"
-                          >
-                            {material.label || material.name || `Material ${index + 1}`}
-                          </a>
-                        ))}
+                        {syllabusMaterials.map((material: any, index: number) => {
+                          const downloadUrl = `/api/files/download?url=${encodeURIComponent(material.url)}&name=${encodeURIComponent(material.label || material.name || `Material ${index + 1}`)}`;
+                          return (
+                            <div key={`${material.url || ''}-${index}`} className="flex items-center gap-2 rounded border px-3 py-2">
+                              <a
+                                href={material.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="flex-1 text-sm text-[#1E3A8A] hover:underline"
+                              >
+                                {material.label || material.name || `Material ${index + 1}`}
+                              </a>
+                              <a
+                                href={downloadUrl}
+                                download
+                                className="text-xs text-[#1E3A8A] hover:underline"
+                              >
+                                Download
+                              </a>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   ) : null}
@@ -743,19 +754,22 @@ export function CourseDetails({ id }: CourseDetailsProps) {
                             <div className="mt-2 space-y-2">
                               <p className="text-sm font-medium text-gray-700">Lesson materials</p>
                               <ul className="space-y-2">
-                                {materialFiles.map((f, idx) => (
-                                  <li key={`${f.fileUrl}-${idx}`} className="flex flex-wrap items-center gap-3 text-sm">
-                                    <span className="text-gray-800 truncate max-w-[220px]" title={f.fileName}>
-                                      {f.fileName}
-                                    </span>
-                                    <a href={f.fileUrl} target="_blank" rel="noreferrer" className="text-[#1E3A8A] underline">
-                                      Open
-                                    </a>
-                                    <a href={f.fileUrl} download className="text-[#1E3A8A] underline">
-                                      Download
-                                    </a>
-                                  </li>
-                                ))}
+                                {materialFiles.map((f, idx) => {
+                                  const downloadUrl = `/api/files/download?url=${encodeURIComponent(f.fileUrl)}&name=${encodeURIComponent(f.fileName)}`;
+                                  return (
+                                    <li key={`${f.fileUrl}-${idx}`} className="flex flex-wrap items-center gap-3 text-sm">
+                                      <span className="text-gray-800 truncate max-w-[220px]" title={f.fileName}>
+                                        {f.fileName}
+                                      </span>
+                                      <a href={f.fileUrl} target="_blank" rel="noreferrer" className="text-[#1E3A8A] underline">
+                                        Open
+                                      </a>
+                                      <a href={downloadUrl} download className="text-[#1E3A8A] underline">
+                                        Download
+                                      </a>
+                                    </li>
+                                  );
+                                })}
                               </ul>
                             </div>
                           ) : null}
