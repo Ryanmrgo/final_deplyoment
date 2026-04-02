@@ -5,7 +5,7 @@ import Enrollment from '@/models/Enrollment';
 import EnrollmentRequest from '@/models/EnrollmentRequest';
 import { getEffectiveRole } from '@/lib/auth';
 import { createNotification } from '@/lib/notifications';
-import { getCourseMaxEnrollments } from '@/lib/enrollmentCap';
+import { courseSeatEnrollmentAndClauses, getCourseMaxEnrollments } from '@/lib/enrollmentCap';
 
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { userId, role } = await getEffectiveRole();
@@ -54,8 +54,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         }
         const maxEnrollments = getCourseMaxEnrollments(courseDoc as any);
         const activeCount = await Enrollment.countDocuments({
-          courseId: requestDoc.courseId,
-          status: 'Active',
+          $and: courseSeatEnrollmentAndClauses(String(requestDoc.courseId)),
         });
         if (activeCount >= maxEnrollments) {
           return NextResponse.json(
@@ -76,6 +75,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         studentId: requestDoc.studentId,
         courseId: requestDoc.courseId,
         enrolledAt: new Date(),
+        status: 'Active',
       });
 
       await Course.findByIdAndUpdate(requestDoc.courseId, {

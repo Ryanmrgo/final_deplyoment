@@ -7,6 +7,7 @@ import { getEffectiveRole } from '@/lib/auth';
 import { uploadToCloudinary } from '@/lib/cloudinary';
 import { saveFileLocally } from '@/lib/localUpload';
 import { useCloudinaryForStorage } from '@/lib/uploadStrategy';
+import { notifyEnrolledStudentsLessonPublished } from '@/lib/notifications';
 import { LESSON_MAX_UPLOAD_MB, MAX_LESSON_UPLOAD_BYTES } from '@/lib/lesson';
 
 const isLessonType = (value: string) => ['video', 'pdf', 'ppt', 'text'].includes(value);
@@ -142,6 +143,16 @@ export async function POST(
       createdAt: new Date(),
       updatedAt: new Date(),
     });
+
+    const courseDoc = ownership.course as { title?: string };
+    if ((lesson as { isPublished?: boolean }).isPublished !== false) {
+      await notifyEnrolledStudentsLessonPublished({
+        courseId: id,
+        courseTitle: String(courseDoc.title || 'Course'),
+        lessonTitle: title,
+        lessonId: String(lesson._id),
+      });
+    }
 
     return NextResponse.json({ success: true, lesson }, { status: 201 });
   } catch (error) {

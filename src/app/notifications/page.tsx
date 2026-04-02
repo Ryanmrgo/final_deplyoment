@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card';
@@ -75,7 +76,20 @@ export default function NotificationsPage() {
                       ) : null}
                     </div>
                     <p className="text-sm text-gray-700 mt-1">{item.message}</p>
-                    <p className="text-xs text-gray-500 mt-2">{new Date(item.createdAt).toLocaleString()}</p>
+                    <div className="flex flex-wrap items-center gap-2 mt-2">
+                      <p className="text-xs text-gray-500">{new Date(item.createdAt).toLocaleString()}</p>
+                      {item.actionUrl && (item.actionUrl.startsWith('/') || item.actionUrl.startsWith('#')) ? (
+                        <Button variant="outline" size="sm" className="h-7 text-xs" asChild>
+                          <Link href={item.actionUrl}>Open link</Link>
+                        </Button>
+                      ) : item.actionUrl ? (
+                        <Button variant="outline" size="sm" className="h-7 text-xs" asChild>
+                          <a href={item.actionUrl} target="_blank" rel="noopener noreferrer">
+                            Open link
+                          </a>
+                        </Button>
+                      ) : null}
+                    </div>
                   </div>
                 ))}
               </div>

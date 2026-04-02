@@ -8,11 +8,19 @@ import Submission from '@/models/Submission';
 import QuizAttempt from '@/models/QuizAttempt';
 import Assignment from '@/models/Assignment';
 import Quiz from '@/models/Quiz';
+import CourseDeletionRequest from '@/models/CourseDeletionRequest';
 import { getEffectiveRole } from '@/lib/auth';
 
 type ActivityItem = {
   id: string;
-  type: 'enrolled' | 'completed' | 'review' | 'discussion' | 'assignment_submission' | 'quiz_submission';
+  type:
+    | 'enrolled'
+    | 'completed'
+    | 'review'
+    | 'discussion'
+    | 'assignment_submission'
+    | 'quiz_submission'
+    | 'course_deletion';
   studentName: string;
   initials: string;
   courseTitle: string;
@@ -41,6 +49,34 @@ export async function GET() {
     const courses = await Course.find({ instructor: userId }).lean();
     const courseIds = courses.map((c: any) => c._id);
     const courseMap = Object.fromEntries(courses.map((c: any) => [c._id.toString(), c]));
+
+    const deletionRequests = await CourseDeletionRequest.find({ teacherId: userId })
+      .sort({ updatedAt: -1 })
+      .limit(30)
+      .lean();
+
+    const deletionEvents: ActivityItem[] = deletionRequests.map((r: any) => {
+      const ct = r.courseTitle || 'Course';
+      const msg =
+        r.status === 'pending'
+          ? `Course "${ct}": you submitted a removal request — waiting for admin review.`
+          : r.status === 'approved'
+            ? `Course "${ct}": admin approved removal; the course is archived.`
+            : `Course "${ct}": removal request was rejected.${r.adminNote ? ` Admin note: ${r.adminNote}` : ''}`;
+      const time = r.status === 'pending' ? r.createdAt : r.reviewedAt || r.updatedAt || r.createdAt;
+      return {
+        id: `cdr-${String(r._id)}`,
+        type: 'course_deletion',
+        studentName: 'You',
+        initials: '·',
+        courseTitle: ct,
+        courseId: String(r.courseId),
+        message: msg,
+        time: time || new Date(),
+        actionUrl: `/dashboard/teacher/course/${String(r.courseId)}`,
+        actionLabel: 'Open course',
+      };
+    });
 
     // Enrollments (enrolled/completed)
     const enrollments = await Enrollment.find({ courseId: { $in: courseIds } })
@@ -250,6 +286,7 @@ export async function GET() {
       ...discussionEvents,
       ...submissionEvents,
       ...quizSubmissionEvents,
+      ...deletionEvents,
     ].sort(
       (a, b) => new Date(b.time).getTime() - new Date(a.time).getTime()
     );

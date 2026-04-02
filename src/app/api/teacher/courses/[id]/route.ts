@@ -8,6 +8,7 @@ import { getEffectiveRole } from '@/lib/auth';
 import { uploadToCloudinary } from '@/lib/cloudinary';
 import { saveFileLocally } from '@/lib/localUpload';
 import { useCloudinaryForStorage } from '@/lib/uploadStrategy';
+import { courseSeatEnrollmentAndClauses } from '@/lib/enrollmentCap';
 
 const MAX_SYLLABUS_BYTES = 20 * 1024 * 1024;
 const MAX_THUMBNAIL_BYTES = 5 * 1024 * 1024;
@@ -135,10 +136,8 @@ export async function PATCH(
         return NextResponse.json({ error: 'maxEnrollments must be between 1 and 1000' }, { status: 400 });
       }
       const nextMax = Math.floor(n);
-      const courseOid = new mongoose.Types.ObjectId(id);
       const activeCount = await Enrollment.countDocuments({
-        courseId: courseOid,
-        status: 'Active',
+        $and: courseSeatEnrollmentAndClauses(id),
       });
       if (nextMax < activeCount) {
         return NextResponse.json(

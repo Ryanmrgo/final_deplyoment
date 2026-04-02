@@ -5,15 +5,25 @@ export type NotificationType =
   | 'enrollment.approved'
   | 'enrollment.rejected'
   | 'course.lesson_published'
-  | 'assignment.created'
   | 'assignment.published'
   | 'assignment.submitted'
   | 'assignment.graded'
   | 'quiz.published'
   | 'quiz.submitted'
   | 'discussion.reply'
-  | 'system.alert';
-export type NotificationEntityType = 'course' | 'enrollmentRequest' | 'assignment' | 'quiz' | 'discussion' | 'system';
+  | 'course.deletion_request_submitted'
+  | 'course.deletion_requested'
+  | 'course.deletion_request_approved'
+  | 'course.deletion_request_rejected'
+  | 'course.removed';
+export type NotificationEntityType =
+  | 'course'
+  | 'enrollmentRequest'
+  | 'assignment'
+  | 'quiz'
+  | 'discussion'
+  | 'system'
+  | 'courseDeletionRequest';
 
 export interface NotificationItem {
   id: string;

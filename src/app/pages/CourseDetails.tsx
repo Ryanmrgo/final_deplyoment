@@ -215,7 +215,7 @@ export function CourseDetails({ id }: CourseDetailsProps) {
   };
 
   useEffect(() => {
-    fetch(`/api/courses/${id}`)
+    fetch(`/api/courses/${id}`, { cache: 'no-store' })
       .then((r) => r.json())
       .then((data) => {
         setCourse(data);
@@ -509,6 +509,7 @@ export function CourseDetails({ id }: CourseDetailsProps) {
   const maxEnrollmentsCap =
     typeof course.maxEnrollments === 'number' && course.maxEnrollments >= 1 ? course.maxEnrollments : 20;
   const enrollmentFull = userRole === 'student' && !isEnrolled && enrolledCount >= maxEnrollmentsCap;
+  const studentsEnrolledDisplay = enrolledCount;
 
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
@@ -537,7 +538,7 @@ export function CourseDetails({ id }: CourseDetailsProps) {
             </div>
             <div className="flex items-center gap-2">
               <Users className="w-5 h-5" />
-              <span>{course.students} students enrolled</span>
+              <span>{studentsEnrolledDisplay} students enrolled</span>
             </div>
             <Badge className="bg-[#F59E0B] text-white text-sm">{course.level}</Badge>
           </div>

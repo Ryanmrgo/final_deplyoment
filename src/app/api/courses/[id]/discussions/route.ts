@@ -18,6 +18,11 @@ const ensureCourseAccess = async (courseId: string, userId: string) => {
   }
 
   const isInstructor = String((course as any).instructor || '') === userId;
+  const courseStatus = (course as any).status || 'Draft';
+  if ((courseStatus === 'Draft' || courseStatus === 'Archived') && !isInstructor) {
+    return { error: NextResponse.json({ error: 'Course not found' }, { status: 404 }) };
+  }
+
   const enrollment = await Enrollment.findOne({ courseId: new mongoose.Types.ObjectId(courseId), studentId: userId }).lean();
 
   if (!isInstructor && !enrollment) {

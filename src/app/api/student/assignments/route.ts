@@ -2,6 +2,7 @@ import connectDB from '@/config/db';
 import { getEffectiveRole } from '@/lib/auth';
 import { normalizeFileAssets } from '@/lib/fileAsset';
 import Assignment from '@/models/Assignment';
+import Course from '@/models/Course';
 import Enrollment from '@/models/Enrollment';
 import mongoose from 'mongoose';
 import { NextResponse } from 'next/server';
@@ -31,6 +32,12 @@ export async function GET(req: Request) {
 
   if (!enrollment) {
     return NextResponse.json({ error: 'Not enrolled in this course' }, { status: 403 });
+  }
+
+  const courseDoc = await Course.findById(courseId).select('status').lean();
+  const st = (courseDoc as any)?.status;
+  if (st === 'Archived' || st === 'Draft') {
+    return NextResponse.json({ error: 'This course is no longer available' }, { status: 403 });
   }
 
   const assignments = await Assignment.find({

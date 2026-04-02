@@ -7,15 +7,25 @@ export type NotificationType =
   | 'enrollment.approved'
   | 'enrollment.rejected'
   | 'course.lesson_published'
-  | 'assignment.created'
   | 'assignment.published'
   | 'assignment.submitted'
   | 'assignment.graded'
   | 'quiz.published'
   | 'quiz.submitted'
   | 'discussion.reply'
-  | 'system.alert';
-export type NotificationEntityType = 'course' | 'enrollmentRequest' | 'assignment' | 'quiz' | 'discussion' | 'system';
+  | 'course.deletion_request_submitted'
+  | 'course.deletion_requested'
+  | 'course.deletion_request_approved'
+  | 'course.deletion_request_rejected'
+  | 'course.removed';
+export type NotificationEntityType =
+  | 'course'
+  | 'enrollmentRequest'
+  | 'assignment'
+  | 'quiz'
+  | 'discussion'
+  | 'system'
+  | 'courseDeletionRequest';
 
 export interface Notification {
   recipientId: string;
@@ -48,14 +58,17 @@ const notificationSchema = new Schema<Notification, NotificationModel>(
         'enrollment.approved',
         'enrollment.rejected',
         'course.lesson_published',
-        'assignment.created',
         'assignment.published',
         'assignment.submitted',
         'assignment.graded',
         'quiz.published',
         'quiz.submitted',
         'discussion.reply',
-        'system.alert',
+        'course.deletion_request_submitted',
+        'course.deletion_requested',
+        'course.deletion_request_approved',
+        'course.deletion_request_rejected',
+        'course.removed',
       ],
       required: true,
     },
@@ -63,7 +76,7 @@ const notificationSchema = new Schema<Notification, NotificationModel>(
     message: { type: String, required: true, trim: true, maxlength: 500 },
     entityType: {
       type: String,
-      enum: ['course', 'enrollmentRequest', 'assignment', 'quiz', 'discussion', 'system'],
+      enum: ['course', 'enrollmentRequest', 'assignment', 'quiz', 'discussion', 'system', 'courseDeletionRequest'],
       required: true,
     },
     entityId: { type: String, default: '' },

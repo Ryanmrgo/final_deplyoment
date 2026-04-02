@@ -39,11 +39,20 @@ export function AdminDashboard() {
   const [requestTotalPages, setRequestTotalPages] = useState(1);
   const [requestsLoading, setRequestsLoading] = useState(false);
 
+  const [courseDeletionRequests, setCourseDeletionRequests] = useState<any[]>([]);
+  const [courseDeletionLoading, setCourseDeletionLoading] = useState(false);
+  const [courseDeletionPage, setCourseDeletionPage] = useState(1);
+  const [courseDeletionFilter, setCourseDeletionFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('pending');
+  const [courseDeletionTotalPages, setCourseDeletionTotalPages] = useState(1);
+  const [updatingDeletionId, setUpdatingDeletionId] = useState<string | null>(null);
+  const [adminTab, setAdminTab] = useState('users');
+
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean;
     onConfirm: () => void;
     title?: string;
     description?: string;
+    confirmText?: string;
   }>({
     open: false,
     onConfirm: () => {},
@@ -87,6 +96,102 @@ export function AdminDashboard() {
       fetchEnrollmentRequests(requestPage, requestStatusFilter);
     }
   }, [userRole, user, requestPage, requestStatusFilter]);
+
+  useEffect(() => {
+    if (userRole === 'admin' && user) {
+      fetchCourseDeletionRequests(courseDeletionPage, courseDeletionFilter);
+    }
+  }, [userRole, user, courseDeletionPage, courseDeletionFilter]);
+
+  useEffect(() => {
+    const syncHash = () => {
+      if (typeof window === 'undefined') return;
+      const h = window.location.hash;
+      if (h === '#course-deletions') setAdminTab('course-deletions');
+      else if (h === '#enrollments') setAdminTab('enrollments');
+    };
+    syncHash();
+    window.addEventListener('hashchange', syncHash);
+    return () => window.removeEventListener('hashchange', syncHash);
+  }, []);
+
+  const fetchCourseDeletionRequests = async (
+    page: number,
+    status: 'all' | 'pending' | 'approved' | 'rejected'
+  ) => {
+    setCourseDeletionLoading(true);
+    try {
+      const qs = new URLSearchParams({
+        page: String(page),
+        limit: '10',
+        status,
+      });
+      const res = await fetch(`/api/admin/course-deletion-requests?${qs.toString()}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed');
+      setCourseDeletionRequests(data.items || []);
+      setCourseDeletionTotalPages(Math.max(1, Number(data?.meta?.totalPages || 1)));
+    } catch {
+      setCourseDeletionRequests([]);
+      setCourseDeletionTotalPages(1);
+    } finally {
+      setCourseDeletionLoading(false);
+    }
+  };
+
+  const handleCourseDeletionStatus = async (requestId: string, status: 'approved' | 'rejected') => {
+    const adminNote =
+      status === 'rejected'
+        ? window.prompt('Optional message to the teacher:') || ''
+        : '';
+    setUpdatingDeletionId(requestId);
+    const toastId = toast.loading(status === 'approved' ? 'Approving…' : 'Rejecting…');
+    try {
+      const res = await fetch(`/api/admin/course-deletion-requests/${requestId}/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status, adminNote: adminNote.trim() }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        throw new Error(typeof data.error === 'string' && data.error ? data.error : 'Update failed');
+      }
+      toast.success(status === 'approved' ? 'Course archived.' : 'Request rejected.', { id: toastId });
+
+      try {
+        await fetchCourseDeletionRequests(courseDeletionPage, courseDeletionFilter);
+      } catch {
+        /* refresh errors must not look like reject/approve failed */
+      }
+      try {
+        const coursesRes = await fetch('/api/admin/courses');
+        const coursesData = (await coursesRes.json().catch(() => ({}))) as { items?: unknown };
+        if (Array.isArray(coursesData.items)) setCourses(coursesData.items as any[]);
+      } catch {
+        /* ignore */
+      }
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Update failed', { id: toastId });
+    } finally {
+      setUpdatingDeletionId(null);
+    }
+  };
+
+  const openApproveDeletionConfirm = (req: {
+    id: string;
+    courseTitle: string;
+    teacherName: string;
+    teacherEmail?: string;
+  }) => {
+    const who = req.teacherEmail ? `${req.teacherName} (${req.teacherEmail})` : req.teacherName;
+    setConfirmDialog({
+      open: true,
+      title: 'Approve removal and archive this course?',
+      description: `Course: "${req.courseTitle}". Requested by: ${who}. Approving will archive this course, hide it from students, and notify everyone enrolled.`,
+      confirmText: 'Approve and archive',
+      onConfirm: () => handleCourseDeletionStatus(req.id, 'approved'),
+    });
+  };
 
   const fetchEnrollmentRequests = async (page: number, status: 'all' | 'pending' | 'approved' | 'rejected') => {
     setRequestsLoading(true);
@@ -172,8 +277,12 @@ export function AdminDashboard() {
     const toastId = toast.loading('Deleting course...');
     try {
       const res = await fetch(`/api/admin/courses/${courseId}`, { method: 'DELETE' });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to delete course');
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        throw new Error(
+          typeof data.error === 'string' && data.error ? data.error : 'Failed to delete course'
+        );
+      }
 
       setAdminMessage('Course deleted successfully.');
       toast.success('Course deleted.', { id: toastId });
@@ -301,8 +410,10 @@ export function AdminDashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to update request');
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        throw new Error(typeof data.error === 'string' && data.error ? data.error : 'Failed to update request');
+      }
 
       setAdminMessage(`Enrollment request ${status}.`);
       toast.success(`Request ${status}.`, { id: toastId });
@@ -385,7 +496,7 @@ export function AdminDashboard() {
           </Card>
         </div>
 
-        <Tabs defaultValue="users" className="space-y-6">
+        <Tabs value={adminTab} onValueChange={setAdminTab} className="space-y-6">
           <TabsList className="bg-white p-1 h-auto flex flex-wrap justify-start gap-1">
             <TabsTrigger value="users" className="data-[state=active]:bg-[#1E3A8A] data-[state=active]:text-white">
               Users Management
@@ -404,6 +515,9 @@ export function AdminDashboard() {
             </TabsTrigger>
             <TabsTrigger value="enrollments" className="data-[state=active]:bg-[#1E3A8A] data-[state=active]:text-white">
               Enrollment Requests
+            </TabsTrigger>
+            <TabsTrigger value="course-deletions" className="data-[state=active]:bg-[#1E3A8A] data-[state=active]:text-white">
+              Course deletion requests
             </TabsTrigger>
           </TabsList>
 
@@ -669,7 +783,7 @@ export function AdminDashboard() {
               </CardContent>
             </Card>
           </TabsContent>
-          <TabsContent value="enrollments">
+          <TabsContent value="enrollments" id="enrollments" className="scroll-mt-4">
             <Card className="bg-white">
               <CardHeader>
                 <CardTitle className="text-2xl text-gray-900">Enrollment Requests</CardTitle>
@@ -726,6 +840,137 @@ export function AdminDashboard() {
               </CardContent>
             </Card>
           </TabsContent>
+
+          <TabsContent value="course-deletions" id="course-deletions" className="scroll-mt-4">
+            <Card className="bg-white">
+              <CardHeader>
+                <CardTitle className="text-2xl text-gray-900">Course deletion requests</CardTitle>
+                <p className="text-sm text-gray-600">
+                  Teachers ask to archive a course. Each row shows the course name, who requested removal, and any note.
+                  Approving archives the course and notifies enrolled students.
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="text-sm text-gray-700">Filter:</label>
+                  <select
+                    className="rounded-md border border-gray-300 px-2 py-1 text-sm"
+                    value={courseDeletionFilter}
+                    onChange={(e) => {
+                      setCourseDeletionFilter(e.target.value as typeof courseDeletionFilter);
+                      setCourseDeletionPage(1);
+                    }}
+                  >
+                    <option value="all">All</option>
+                    <option value="pending">Pending</option>
+                    <option value="approved">Approved</option>
+                    <option value="rejected">Rejected</option>
+                  </select>
+                </div>
+                {courseDeletionLoading ? (
+                  <p className="text-sm text-gray-600">Loading…</p>
+                ) : courseDeletionRequests.length === 0 ? (
+                  <p className="text-sm text-gray-600">No requests.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {courseDeletionRequests.map((req) => (
+                      <div key={req.id} className="border rounded-lg p-4 space-y-3 bg-gray-50/50">
+                        <div className="flex flex-wrap justify-between gap-2">
+                          <div className="space-y-2 min-w-0 flex-1">
+                            <div>
+                              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Course</p>
+                              <p className="font-semibold text-gray-900 text-lg">
+                                {req.courseTitle?.trim() || 'Untitled course'}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Requested by</p>
+                              <p className="text-sm text-gray-800">
+                                {req.teacherName}
+                                {req.teacherEmail ? (
+                                  <span className="text-gray-600"> — {req.teacherEmail}</span>
+                                ) : null}
+                              </p>
+                            </div>
+                            {req.teacherMessage ? (
+                              <div>
+                                <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Teacher note</p>
+                                <p className="text-sm text-gray-800">{req.teacherMessage}</p>
+                              </div>
+                            ) : null}
+                          </div>
+                          <Badge
+                            className={
+                              req.status === 'pending'
+                                ? 'bg-amber-100 text-amber-900 shrink-0'
+                                : req.status === 'approved'
+                                  ? 'bg-green-100 text-green-800 shrink-0'
+                                  : 'bg-gray-100 text-gray-800 shrink-0'
+                            }
+                          >
+                            {req.status}
+                          </Badge>
+                        </div>
+                        {req.status === 'pending' ? (
+                          <div className="flex flex-wrap gap-2 items-center">
+                            <Button
+                              size="sm"
+                              className="bg-[#1E3A8A]"
+                              disabled={updatingDeletionId === req.id}
+                              onClick={() =>
+                                openApproveDeletionConfirm({
+                                  id: req.id,
+                                  courseTitle: req.courseTitle?.trim() || 'Untitled course',
+                                  teacherName: req.teacherName,
+                                  teacherEmail: req.teacherEmail,
+                                })
+                              }
+                            >
+                              Approve (archive course)
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={updatingDeletionId === req.id}
+                              onClick={() => handleCourseDeletionStatus(req.id, 'rejected')}
+                            >
+                              Reject
+                            </Button>
+                          </div>
+                        ) : null}
+                        {req.adminNote ? (
+                          <p className="text-xs text-gray-500">Admin note: {req.adminNote}</p>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="flex items-center justify-between pt-2">
+                  <p className="text-xs text-gray-500">
+                    Page {courseDeletionPage} of {courseDeletionTotalPages}
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={courseDeletionPage <= 1 || courseDeletionLoading}
+                      onClick={() => setCourseDeletionPage((p) => Math.max(1, p - 1))}
+                    >
+                      Previous
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={courseDeletionPage >= courseDeletionTotalPages || courseDeletionLoading}
+                      onClick={() => setCourseDeletionPage((p) => Math.min(courseDeletionTotalPages, p + 1))}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
         </Tabs>
         <ConfirmDialog
           open={confirmDialog.open}
@@ -736,6 +981,7 @@ export function AdminDashboard() {
           }}
           title={confirmDialog.title}
           description={confirmDialog.description}
+          confirmText={confirmDialog.confirmText}
         />
       </div>
     </div>

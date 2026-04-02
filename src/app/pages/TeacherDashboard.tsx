@@ -13,7 +13,7 @@ import {
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
 import { Textarea } from '@/app/components/ui/textarea';
-import { Plus, Users, BookOpen, Star, TrendingUp, Eye, EyeOff, Settings, PlayCircle } from 'lucide-react';
+import { Plus, Users, BookOpen, Star, TrendingUp, Eye, EyeOff, Settings, PlayCircle, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -77,6 +77,10 @@ export function TeacherDashboard() {
   const [createError, setCreateError] = useState<string | null>(null);
   const [publishingId, setPublishingId] = useState<string | null>(null);
   const [publishError, setPublishError] = useState<string | null>(null);
+  const [pendingDeletionByCourseId, setPendingDeletionByCourseId] = useState<Record<string, boolean>>({});
+  const [deletionDialogCourse, setDeletionDialogCourse] = useState<any | null>(null);
+  const [deletionMessage, setDeletionMessage] = useState('');
+  const [deletionSubmitting, setDeletionSubmitting] = useState(false);
   const [categoryOptions, setCategoryOptions] = useState<string[]>(DEFAULT_CATEGORIES);
 
   const MAX_THUMBNAIL_MB = 5;
@@ -97,6 +101,7 @@ export function TeacherDashboard() {
   const getFileType = (fileName: string) => fileName.split('.').pop()?.toLowerCase() || 'file';
 
   const handlePublishToggle = async (course: any) => {
+    if ((course.status || '') === 'Archived') return;
     const courseId = course._id || course.id;
     if (!courseId) return;
     setPublishingId(courseId);
@@ -122,6 +127,59 @@ export function TeacherDashboard() {
       setPublishError('Failed to change course visibility.');
     } finally {
       setPublishingId(null);
+    }
+  };
+
+  const refreshPendingDeletions = async () => {
+    try {
+      const res = await fetch('/api/teacher/course-deletion-requests');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return;
+      const map: Record<string, boolean> = {};
+      for (const it of data.items || []) {
+        if (it.courseId) map[String(it.courseId)] = true;
+      }
+      setPendingDeletionByCourseId(map);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const submitDeletionRequest = async () => {
+    const course = deletionDialogCourse;
+    if (!course) return;
+    const courseId = course._id || course.id;
+    if (!courseId) return;
+    setDeletionSubmitting(true);
+    const toastId = toast.loading('Submitting request…');
+    try {
+      const res = await fetch(`/api/teacher/courses/${courseId}/deletion-request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: deletionMessage.trim() }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        throw new Error(
+          typeof data.error === 'string' && data.error ? data.error : 'Request failed'
+        );
+      }
+      toast.success('Deletion request sent. An admin will review it.', { id: toastId });
+      setDeletionDialogCourse(null);
+      setDeletionMessage('');
+
+      try {
+        await refreshPendingDeletions();
+        const activityRes = await fetch('/api/teacher/activity');
+        const activityData = (await activityRes.json().catch(() => ({}))) as { items?: unknown };
+        if (Array.isArray(activityData.items)) setActivity(activityData.items as any[]);
+      } catch {
+        /* refresh failures must not look like submission failed */
+      }
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Could not submit request', { id: toastId });
+    } finally {
+      setDeletionSubmitting(false);
     }
   };
 
@@ -183,11 +241,17 @@ export function TeacherDashboard() {
         fetch('/api/teacher/courses').then((r) => r.json()),
         fetch('/api/teacher/stats').then((r) => r.json()),
         fetch('/api/teacher/activity').then((r) => r.json()),
+        fetch('/api/teacher/course-deletion-requests').then((r) => r.json()),
       ])
-        .then(([coursesRes, statsRes, activityRes]) => {
+        .then(([coursesRes, statsRes, activityRes, delRes]) => {
           setTeacherCourses(coursesRes.items || []);
           setStats(statsRes.error ? null : statsRes);
           setActivity(activityRes.items || []);
+          const map: Record<string, boolean> = {};
+          for (const it of delRes.items || []) {
+            if (it.courseId) map[String(it.courseId)] = true;
+          }
+          setPendingDeletionByCourseId(map);
         })
         .catch(() => {})
         .finally(() => setLoading(false));
@@ -805,6 +869,59 @@ export function TeacherDashboard() {
         </DialogContent>
       </Dialog>
 
+      <Dialog
+        open={!!deletionDialogCourse}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeletionDialogCourse(null);
+            setDeletionMessage('');
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Request course removal</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-gray-600">
+            An administrator must approve before the course is archived. Enrolled students will be notified after
+            approval.
+          </p>
+          {deletionDialogCourse ? (
+            <p className="text-sm font-medium text-gray-900">{deletionDialogCourse.title}</p>
+          ) : null}
+          <div className="space-y-2">
+            <Label htmlFor="deletion-note">Message to admin (optional)</Label>
+            <Textarea
+              id="deletion-note"
+              value={deletionMessage}
+              onChange={(e) => setDeletionMessage(e.target.value)}
+              placeholder="Reason or context…"
+              rows={3}
+              maxLength={500}
+            />
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDeletionDialogCourse(null);
+                setDeletionMessage('');
+              }}
+              disabled={deletionSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="bg-red-600 hover:bg-red-600/90"
+              onClick={submitDeletionRequest}
+              disabled={deletionSubmitting}
+            >
+              {deletionSubmitting ? 'Submitting…' : 'Submit request'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <div className="container mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-8">
           <div>
@@ -892,36 +1009,53 @@ export function TeacherDashboard() {
                   <div className="space-y-4">
                     {[...teacherCourses]
                       .sort((a, b) => {
-                        const sa = a.status === 'Published' ? 0 : 1;
-                        const sb = b.status === 'Published' ? 0 : 1;
-                        return sa - sb;
+                        const ord = (s: string) =>
+                          s === 'Published' ? 0 : s === 'Draft' ? 1 : s === 'Archived' ? 2 : 3;
+                        return ord(a.status || 'Draft') - ord(b.status || 'Draft');
                       })
                       .map((course: any) => {
-                        const isPublished = (course.status || 'Draft') === 'Published';
+                        const status = course.status || 'Draft';
+                        const isPublished = status === 'Published';
+                        const isArchived = status === 'Archived';
                         const courseId = course._id || course.id;
                         const isPublishing = publishingId === courseId;
+                        const hasPendingDeletion = !!pendingDeletionByCourseId[String(courseId)];
                         return (
                           <div
                             key={courseId}
                             className={`border rounded-lg p-5 hover:shadow-md transition ${
-                              !isPublished ? 'bg-gray-50 border-gray-200' : ''
-                            }`}
+                              !isPublished && !isArchived ? 'bg-gray-50 border-gray-200' : ''
+                            } ${isArchived ? 'opacity-95 border-slate-300' : ''}`}
                           >
-                            <div className="flex items-start justify-between mb-3">
+                            <div className="flex items-start justify-between mb-3 gap-3 flex-wrap">
                               <div>
                                 <h3 className="font-semibold text-lg text-gray-900 mb-1">{course.title}</h3>
                                 <p className="text-sm text-gray-600">{course.category || 'General'}</p>
-                                {!isPublished && (
+                                {isArchived ? (
+                                  <p className="text-xs text-slate-700 mt-1 font-medium">
+                                    Archived — hidden from students like a draft.
+                                  </p>
+                                ) : !isPublished ? (
                                   <p className="text-xs text-amber-700 mt-1 font-medium">Hidden from students</p>
+                                ) : null}
+                                {hasPendingDeletion ? (
+                                  <p className="text-xs text-amber-800 mt-1">
+                                    Deletion request pending admin review.
+                                  </p>
+                                ) : null}
+                              </div>
+                              <div className="flex flex-wrap gap-2 justify-end">
+                                {hasPendingDeletion ? (
+                                  <Badge className="bg-amber-100 text-amber-900">Deletion pending</Badge>
+                                ) : null}
+                                {isArchived ? (
+                                  <Badge className="bg-slate-200 text-slate-800">Archived</Badge>
+                                ) : isPublished ? (
+                                  <Badge className="bg-green-100 text-green-700">Published</Badge>
+                                ) : (
+                                  <Badge className="bg-gray-200 text-gray-700">Draft</Badge>
                                 )}
                               </div>
-                              <Badge
-                                className={
-                                  isPublished ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-700'
-                                }
-                              >
-                                {isPublished ? 'Published' : 'Draft'}
-                              </Badge>
                             </div>
                             <div className="grid grid-cols-3 gap-4 mb-4">
                               <div>
@@ -941,7 +1075,7 @@ export function TeacherDashboard() {
                                 variant="outline"
                                 size="sm"
                                 onClick={() => handlePublishToggle(course)}
-                                disabled={isPublishing}
+                                disabled={isPublishing || isArchived}
                                 className={
                                   isPublished
                                     ? 'border-gray-400 text-gray-600'
@@ -950,6 +1084,8 @@ export function TeacherDashboard() {
                               >
                                 {isPublishing ? (
                                   '...'
+                                ) : isArchived ? (
+                                  'Archived'
                                 ) : isPublished ? (
                                   <>
                                     <EyeOff className="w-4 h-4 mr-2" />
@@ -986,6 +1122,19 @@ export function TeacherDashboard() {
                                   View
                                 </Button>
                               </Link>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={isArchived || hasPendingDeletion || deletionSubmitting}
+                                onClick={() => {
+                                  setDeletionDialogCourse(course);
+                                  setDeletionMessage('');
+                                }}
+                                className="border-red-200 text-red-800 hover:bg-red-50"
+                              >
+                                <Trash2 className="w-4 h-4 mr-2" />
+                                Request removal
+                              </Button>
                             </div>
                           </div>
                         );
@@ -1009,8 +1158,11 @@ export function TeacherDashboard() {
                         <div className="w-10 h-10 rounded-full bg-[#1E3A8A] text-white flex items-center justify-center font-semibold text-sm">
                           {item.initials}
                         </div>
-                        <div className="flex-1">
+                        <div className="flex-1 min-w-0">
                           <p className="text-sm font-semibold text-gray-900">{item.message}</p>
+                          {item.type === 'course_deletion' && item.courseTitle ? (
+                            <p className="text-xs font-medium text-[#1E3A8A] mt-0.5">Course: {item.courseTitle}</p>
+                          ) : null}
                           <p className="text-xs text-gray-600">
                             {new Date(item.time).toLocaleDateString()} • {new Date(item.time).toLocaleTimeString()}
                           </p>

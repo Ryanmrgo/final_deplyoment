@@ -6,8 +6,8 @@ import Enrollment from '@/models/Enrollment';
 import EnrollmentRequest from '@/models/EnrollmentRequest';
 import User from '@/models/User';
 import { getEffectiveRole } from '@/lib/auth';
-import { createNotificationsBulk } from '@/lib/notifications';
-import { getCourseMaxEnrollments } from '@/lib/enrollmentCap';
+import { createNotification, createNotificationsBulk } from '@/lib/notifications';
+import { courseSeatEnrollmentAndClauses, getCourseMaxEnrollments } from '@/lib/enrollmentCap';
 
 interface CreateEnrollmentRequestBody {
   courseId?: string;
@@ -52,22 +52,24 @@ export async function POST(req: Request) {
   try {
     await connectDB();
 
-    const course = await Course.findById(courseId).select('_id status title maxEnrollments').lean();
+    const course = await Course.findById(courseId)
+      .select('_id status title maxEnrollments instructor')
+      .lean();
     if (!course || (course as any).status !== 'Published') {
       return NextResponse.json({ error: 'Course not available for enrollment' }, { status: 404 });
     }
 
     const alreadyEnrolled = await Enrollment.findOne({
-      studentId: userId,
-      courseId,
-      status: 'Active',
+      $and: [{ studentId: userId }, ...courseSeatEnrollmentAndClauses(courseId)],
     }).lean();
     if (alreadyEnrolled) {
       return NextResponse.json({ error: 'You are already enrolled in this course' }, { status: 409 });
     }
 
     const maxEnrollments = getCourseMaxEnrollments(course as any);
-    const activeCount = await Enrollment.countDocuments({ courseId, status: 'Active' });
+    const activeCount = await Enrollment.countDocuments({
+      $and: courseSeatEnrollmentAndClauses(courseId),
+    });
     if (activeCount >= maxEnrollments) {
       return NextResponse.json(
         { error: `This course is full (${activeCount}/${maxEnrollments}). Try again later or contact support.` },
@@ -102,11 +104,31 @@ export async function POST(req: Request) {
           message: `${fullName} requested access to ${courseTitle}.`,
           entityType: 'enrollmentRequest' as const,
           entityId: String(requestDoc._id),
-          actionUrl: '/dashboard/admin',
+          actionUrl: '/dashboard/admin#enrollments',
           priority: 'high' as const,
-          metadata: { courseId, studentId: userId },
+          metadata: { courseId, studentId: userId, requestId: String(requestDoc._id) },
         }))
       );
+    }
+
+    const instructorId = String((course as any).instructor || '').trim();
+    if (instructorId) {
+      try {
+        await createNotification({
+          recipientId: instructorId,
+          recipientRole: 'teacher',
+          type: 'enrollment.request_submitted',
+          title: 'New enrollment request for your course',
+          message: `${fullName} requested to join "${String((course as any).title || 'your course')}". An administrator will review it.`,
+          entityType: 'enrollmentRequest',
+          entityId: String(requestDoc._id),
+          actionUrl: `/dashboard/teacher/course/${courseId}`,
+          priority: 'medium',
+          metadata: { courseId, studentId: userId, requestId: String(requestDoc._id) },
+        });
+      } catch (e) {
+        console.error('Teacher enrollment notification:', e);
+      }
     }
 
     return NextResponse.json({

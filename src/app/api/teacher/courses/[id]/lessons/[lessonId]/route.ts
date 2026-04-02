@@ -8,6 +8,7 @@ import { uploadToCloudinary } from '@/lib/cloudinary';
 import { saveFileLocally } from '@/lib/localUpload';
 import { useCloudinaryForStorage } from '@/lib/uploadStrategy';
 import { LESSON_MAX_UPLOAD_MB, MAX_LESSON_UPLOAD_BYTES } from '@/lib/lesson';
+import { notifyEnrolledStudentsLessonPublished } from '@/lib/notifications';
 
 const isLessonType = (value: string) => ['video', 'pdf', 'ppt', 'text'].includes(value);
 
@@ -107,6 +108,12 @@ export async function PATCH(
       return NextResponse.json({ error: 'Lesson title is required' }, { status: 400 });
     }
 
+    const existingLesson = await Lesson.findOne({ _id: lessonId, courseId: id }).lean();
+    if (!existingLesson) {
+      return NextResponse.json({ error: 'Lesson not found' }, { status: 404 });
+    }
+    const wasPublished = Boolean((existingLesson as { isPublished?: boolean }).isPublished);
+
     const lesson = await Lesson.findOneAndUpdate(
       { _id: lessonId, courseId: id },
       { $set: updates },
@@ -115,6 +122,18 @@ export async function PATCH(
 
     if (!lesson) {
       return NextResponse.json({ error: 'Lesson not found' }, { status: 404 });
+    }
+
+    const nowPublished = Boolean((lesson as { isPublished?: boolean }).isPublished);
+    if (nowPublished && !wasPublished) {
+      const course = ownership.course as { title?: string };
+      const lessonTitle = String((lesson as { title?: string }).title || 'Lesson');
+      await notifyEnrolledStudentsLessonPublished({
+        courseId: id,
+        courseTitle: String(course.title || 'Course'),
+        lessonTitle,
+        lessonId: String((lesson as { _id: unknown })._id),
+      });
     }
 
     return NextResponse.json({ success: true, lesson });

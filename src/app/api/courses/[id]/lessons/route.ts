@@ -25,7 +25,11 @@ export async function GET(
     const course = await Course.findById(id).lean();
     if (!course) return NextResponse.json({ error: 'Course not found' }, { status: 404 });
 
+    const courseStatus = (course as any).status || 'Draft';
     const isInstructor = (course as any).instructor?.toString() === userId;
+    if ((courseStatus === 'Draft' || courseStatus === 'Archived') && !isInstructor) {
+      return NextResponse.json({ error: 'Course not found' }, { status: 404 });
+    }
     const enrollment = await Enrollment.findOne({ courseId: id, studentId: userId });
 
     if (!isInstructor && !enrollment) {

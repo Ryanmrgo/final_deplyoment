@@ -5,7 +5,13 @@ import User from '@/models/User';
 import Enrollment from '@/models/Enrollment';
 import mongoose from 'mongoose';
 import { auth } from '@clerk/nextjs/server';
-import { getCourseMaxEnrollments } from '@/lib/enrollmentCap';
+import {
+  courseSeatEnrollmentAndClauses,
+  getCourseMaxEnrollments,
+  studentCourseEnrollmentClauses,
+} from '@/lib/enrollmentCap';
+
+export const dynamic = 'force-dynamic';
 
 // Public route - fetch single course by ID
 export async function GET(
@@ -35,10 +41,10 @@ export async function GET(
       // not authenticated
     }
 
-    // Moodle-like: Draft courses are hidden from students; only instructor can view
+    // Draft / Archived hidden from non-instructors (instructor can still view manage)
     const courseStatus = (course as any).status || 'Draft';
     const isInstructor = !!(userId && userId === (course as any).instructor);
-    if (courseStatus === 'Draft' && !isInstructor) {
+    if ((courseStatus === 'Draft' || courseStatus === 'Archived') && !isInstructor) {
       return NextResponse.json({ error: 'Course not found' }, { status: 404 });
     }
 
@@ -53,8 +59,7 @@ export async function GET(
     let completedLessonIds: string[] = [];
     if (userId) {
       const enrollment = await Enrollment.findOne({
-        studentId: userId,
-        courseId: new mongoose.Types.ObjectId(id),
+        $and: [{ studentId: userId }, ...studentCourseEnrollmentClauses(id)],
       }).lean();
       if (enrollment) {
         isEnrolled = true;
@@ -74,10 +79,8 @@ export async function GET(
 
     const myReview = (course.reviews || []).find((r: any) => r.studentId === userId);
 
-    const courseObjectId = new mongoose.Types.ObjectId(id);
     const enrolledCount = await Enrollment.countDocuments({
-      courseId: courseObjectId,
-      status: 'Active',
+      $and: courseSeatEnrollmentAndClauses(id),
     });
     const maxEnrollments = getCourseMaxEnrollments(course as any);
 

@@ -52,6 +52,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
           studentId: requestDoc.studentId,
           courseId: requestDoc.courseId,
           enrolledAt: new Date(),
+          status: 'Active',
         });
 
         await Course.findByIdAndUpdate(requestDoc.courseId, {
